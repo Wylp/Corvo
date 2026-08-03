@@ -1,4 +1,4 @@
-# Klipa — gerenciador de histórico de área de transferência para macOS
+# Corvo — gerenciador de histórico de área de transferência para macOS
 
 Data: 2026-08-03
 Status: aprovado para planejamento
@@ -31,7 +31,7 @@ do histórico, plugins, App Store. Nenhum é difícil de encaixar depois; nenhum
 
 ```
 App/
-  KlipaApp.swift            @main, MenuBarExtra, ciclo de vida
+  CorvoApp.swift            @main, MenuBarExtra, ciclo de vida
 Clipboard/
   PasteboardMonitor.swift   poller do changeCount + filtro de privacidade
   SourceTracker.swift       heurística do app de origem
@@ -110,7 +110,7 @@ Trust boundary — sem simplificações aqui.
 - Itens marcados com `org.nspasteboard.TransientType` também são ignorados.
 - **Blocklist de apps** configurável nas preferências: nada copiado a partir dos
   bundle IDs listados é gravado.
-- O banco fica em `~/Library/Application Support/Klipa/`, permissões padrão do
+- O banco fica em `~/Library/Application Support/Corvo/`, permissões padrão do
   usuário. Sem criptografia na v1 (documentado no README).
 
 ## Schema
@@ -225,8 +225,10 @@ Início de Sessão.
 ## Distribuição
 
 - Repositório público, licença MIT.
+- Bundle ID `com.wylp.corvo`; app instalado como `Corvo.app`.
 - Release do GitHub com `.zip` do `.app`, gerado por GitHub Actions.
-- Cask Homebrew apontando para o release.
+- Cask Homebrew de token `corvo` — verificado livre em 2026-08-03, assim como o
+  nome no GitHub (só projetos pequenos e de domínio não relacionado).
 - Assinatura: build ad-hoc na v1. Notarização com Developer ID entra quando a
   conta paga existir — documentar no README que, até lá, a primeira abertura
   exige "Abrir mesmo assim" nas Configurações de Privacidade e Segurança.
