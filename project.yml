@@ -1,0 +1,68 @@
+name: Corvo
+options:
+  bundleIdPrefix: com.wylp
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 7.11.1
+
+targets:
+  Corvo:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/Corvo
+    dependencies:
+      - package: GRDB
+        product: GRDB
+    info:
+      path: Corvo-Info.plist
+      properties:
+        CFBundleDevelopmentRegion: pt_BR
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "14.0"
+        LSUIElement: true
+        NSHumanReadableCopyright: MIT
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wylp.corvo
+        PRODUCT_NAME: Corvo
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: NO
+
+  CorvoTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/CorvoTests
+    dependencies:
+      - target: Corvo
+      - package: GRDB
+        product: GRDB
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Corvo:
+    build:
+      targets:
+        Corvo: all
+        CorvoTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CorvoTests

@@ -1,0 +1,7 @@
+.superpowers/
+.DS_Store
+Corvo.xcodeproj/
+build/
+DerivedData/
+*.xcuserstate
+.swiftpm/
