@@ -120,3 +120,46 @@ private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
     #expect(fontes[0].name == "Slack")
     #expect(fontes[0].count == 2)
 }
+
+/// Os três filtros ao mesmo tempo. Existe porque `search` monta SQL por
+/// concatenação com argumentos posicionais: o `?` do JOIN de tag precede os do
+/// WHERE, e reordenar os blocos devolveria resultado errado sem lançar erro.
+/// Nenhum outro teste combina os três, então esta é a única rede contra isso.
+@Test func buscaCombinaOsTresFiltrosSimultaneamente() throws {
+    let (repo, dir) = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let slack = ItemSource(bundleId: "com.tinyspeck.slackmacgap", name: "Slack")
+    let term = ItemSource(bundleId: "com.apple.Terminal", name: "Terminal")
+
+    let zero = try repo.insert(texto("alpha zero"), source: slack, now: t0)
+    let um = try repo.insert(texto("alpha um"), source: slack, now: t0.addingTimeInterval(10))
+    let seis = try repo.insert(texto("alpha seis"), source: slack, now: t0.addingTimeInterval(300))
+    _ = try repo.insert(texto("alpha dois"), source: slack, now: t0.addingTimeInterval(400))
+    let tres = try repo.insert(texto("alpha tres"), source: term, now: t0.addingTimeInterval(500))
+    let quatro = try repo.insert(texto("beta quatro"), source: slack, now: t0.addingTimeInterval(600))
+    let cinco = try repo.insert(texto("alpha cinco"), source: slack, now: t0.addingTimeInterval(700))
+
+    for id in [zero, um, seis, tres, quatro] { try repo.addTag(named: "trabalho", to: id) }
+    try repo.addTag(named: "pessoal", to: cinco)
+    try repo.setPinned(zero, true)
+
+    let trabalho = try #require(try repo.allTags().first(where: { $0.name == "trabalho" })?.id)
+    let pessoal = try #require(try repo.allTags().first(where: { $0.name == "pessoal" })?.id)
+
+    #expect(try repo.search(text: "alpha", sourceBundleId: slack.bundleId,
+                            tagId: trabalho, limit: 50).map(\.text)
+            == ["alpha zero", "alpha seis", "alpha um"])
+
+    #expect(try repo.search(text: "alpha", sourceBundleId: slack.bundleId,
+                            tagId: trabalho, limit: 2).map(\.text)
+            == ["alpha zero", "alpha seis"])
+
+    // "slack" casa o sourceName, então "beta quatro" entra por direito.
+    #expect(try repo.search(text: "slack", sourceBundleId: slack.bundleId,
+                            tagId: trabalho, limit: 50).map(\.text)
+            == ["alpha zero", "beta quatro", "alpha seis", "alpha um"])
+
+    #expect(try repo.search(text: "alpha", sourceBundleId: term.bundleId,
+                            tagId: pessoal, limit: 50).isEmpty)
+}
