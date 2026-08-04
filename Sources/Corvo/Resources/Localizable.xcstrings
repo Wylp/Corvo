@@ -1,96 +1,96 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "Add" : {
-      "comment" : "Button that confirms the new tag in the tag sheet."
+  "sourceLanguage": "en",
+  "strings": {
+    "Add": {
+      "comment": "Button that confirms the new tag in the tag sheet."
     },
-    "Cancel" : {
-      "comment" : "Button that dismisses the tag sheet without adding anything."
+    "Cancel": {
+      "comment": "Button that dismisses the tag sheet without adding anything."
     },
-    "Close" : {
-      "comment" : "Key-hint label for esc, which closes the panel."
+    "Close": {
+      "comment": "Key-hint label for esc, which closes the panel."
     },
-    "Copy something and come back." : {
-      "comment" : "Empty-history hint under the 'Nothing here yet' title."
+    "Copy something and come back.": {
+      "comment": "Empty-history hint under the 'Nothing here yet' title."
     },
-    "Corvo" : {
-      "comment" : "App name. Never translated.",
-      "shouldTranslate" : false
+    "Corvo": {
+      "comment": "App name. Never translated.",
+      "shouldTranslate": false
     },
-    "Delete" : {
-      "comment" : "Key-hint label for the delete key, which removes the selected item."
+    "Delete": {
+      "comment": "Key-hint label for the delete key, which removes the selected item."
     },
-    "Image unavailable" : {
-      "comment" : "Shown on a card whose image file could not be read from disk."
+    "Image unavailable": {
+      "comment": "Shown on a card whose image file could not be read from disk."
     },
-    "New tag" : {
-      "comment" : "Title of the sheet that adds a tag to the selected item."
+    "New tag": {
+      "comment": "Title of the sheet that adds a tag to the selected item."
     },
-    "No matches" : {
-      "comment" : "Title shown when the search finds nothing."
+    "No matches": {
+      "comment": "Title shown when the search finds nothing."
     },
-    "Nothing here yet" : {
-      "comment" : "Title shown when the history is empty."
+    "Nothing here yet": {
+      "comment": "Title shown when the history is empty."
     },
-    "Paste" : {
-      "comment" : "Key-hint label for return, which pastes the selected item."
+    "Paste": {
+      "comment": "Key-hint label for return, which pastes the selected item."
     },
-    "Pin" : {
-      "comment" : "Key-hint label for Command-P, which pins the selected item."
+    "Pin": {
+      "comment": "Key-hint label for Command-P, which pins the selected item."
     },
-    "Pinned" : {
-      "comment" : "Accessibility label for the pin badge on a card."
+    "Pinned": {
+      "comment": "Accessibility label for the pin badge on a card."
     },
-    "Quit" : {
-      "comment" : "Menu bar item that terminates the app."
+    "Quit": {
+      "comment": "Menu bar item that terminates the app."
     },
-    "Search content or app…" : {
-      "comment" : "Placeholder of the search field at the top of the panel."
+    "Search content or app…": {
+      "comment": "Placeholder of the search field at the top of the panel."
     },
-    "Show History" : {
-      "comment" : "Menu bar item that opens the floating panel."
+    "Show History": {
+      "comment": "Menu bar item that opens the floating panel."
     },
-    "Sources" : {
-      "comment" : "Sidebar section listing the apps the clippings came from."
+    "Sources": {
+      "comment": "Sidebar section listing the apps the clippings came from."
     },
-    "Tag" : {
-      "comment" : "Key-hint label for Command-T, which tags the selected item."
+    "Tag": {
+      "comment": "Key-hint label for Command-T, which tags the selected item."
     },
-    "Tag name" : {
-      "comment" : "Placeholder of the text field in the new-tag sheet."
+    "Tag name": {
+      "comment": "Placeholder of the text field in the new-tag sheet."
     },
-    "Tags" : {
-      "comment" : "Sidebar section listing the tags in use."
+    "Tags": {
+      "comment": "Sidebar section listing the tags in use."
     },
-    "Try another word, or clear the search." : {
-      "comment" : "Hint under the 'No matches' title."
+    "Try another word, or clear the search.": {
+      "comment": "Hint under the 'No matches' title."
     },
-    "Unavailable" : {
-      "comment" : "Badge on a file card whose original file is no longer on disk."
+    "Unavailable": {
+      "comment": "Badge on a file card whose original file is no longer on disk."
     },
-    "Unknown" : {
-      "comment" : "Fallback shown on a card when the source app was not recorded."
+    "Unknown": {
+      "comment": "Fallback shown on a card when the source app was not recorded."
     },
-    "esc" : {
-      "comment" : "Keycap glyph. Printed on the key itself, never translated.",
-      "shouldTranslate" : false
+    "esc": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
     },
-    "⌘P" : {
-      "comment" : "Keycap glyph. Printed on the key itself, never translated.",
-      "shouldTranslate" : false
+    "⌘P": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
     },
-    "⌘T" : {
-      "comment" : "Keycap glyph. Printed on the key itself, never translated.",
-      "shouldTranslate" : false
+    "⌘T": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
     },
-    "⌫" : {
-      "comment" : "Keycap glyph. Printed on the key itself, never translated.",
-      "shouldTranslate" : false
+    "⌘⌫": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
     },
-    "⏎" : {
-      "comment" : "Keycap glyph. Printed on the key itself, never translated.",
-      "shouldTranslate" : false
+    "⏎": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

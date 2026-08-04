@@ -99,7 +99,7 @@ struct HistoryView: View {
             hint("⏎", "Paste")
             hint("⌘P", "Pin")
             hint("⌘T", "Tag")
-            hint("⌫", "Delete")
+            hint("⌘⌫", "Delete")
             Spacer(minLength: 8)
             hint("esc", "Close")
         }
@@ -134,7 +134,13 @@ struct HistoryView: View {
             shortcutButton(.leftArrow) { model.move(-1) }
             shortcutButton(.rightArrow) { model.move(1) }
             shortcutButton(.return) { pasteSelected() }
-            shortcutButton(.delete) { if let item = model.selectedItem { model.delete(item) } }
+            // ⌘⌫, not a bare ⌫: the search field holds focus while the panel is
+            // open, so an unmodified Delete either steals backspace from the
+            // field — destroying a clipping with no undo — or never fires at
+            // all. ⌘⌫ is unambiguous, and it is what Finder and Paste use.
+            shortcutButton(.delete, modifiers: .command) {
+                if let item = model.selectedItem { model.delete(item) }
+            }
             shortcutButton("p", modifiers: .command) {
                 if let item = model.selectedItem { model.togglePinned(item) }
             }
