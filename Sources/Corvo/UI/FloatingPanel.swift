@@ -39,10 +39,29 @@ final class PanelController {
 
     func toggle() { panel.isVisible ? hide() : show() }
 
+    /// Breathing room between the panel and the bottom of the usable screen. On
+    /// the same 8pt rhythm as the rest of the UI, and wide enough that the
+    /// panel's shadow reads as a gap rather than as the panel resting on the Dock.
+    private static let bottomInset: CGFloat = 24
+
     func show() {
-        panel.center()
+        anchorToBottom()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+    }
+
+    /// Centred horizontally and anchored low, on the screen holding the pointer.
+    /// With two displays the panel belongs where the work is, not on whichever
+    /// one macOS calls main. `visibleFrame`, not `frame`: it already excludes the
+    /// Dock and the menu bar, so the panel never opens behind the Dock.
+    private func anchorToBottom() {
+        let pointer = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) })
+                ?? NSScreen.main else { return }
+        let area = screen.visibleFrame
+        let size = panel.frame.size
+        panel.setFrameOrigin(NSPoint(x: area.midX - size.width / 2,
+                                     y: area.minY + Self.bottomInset))
     }
 
     func hide() { panel.orderOut(nil) }
