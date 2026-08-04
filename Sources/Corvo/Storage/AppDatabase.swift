@@ -2,14 +2,14 @@ import Foundation
 import GRDB
 
 enum AppDatabase {
-    /// Diretório de suporte do app: `~/Library/Application Support/Corvo/`.
+    /// App support directory: `~/Library/Application Support/Corvo/`.
     static var supportDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory,
                                             in: .userDomainMask)[0]
         return base.appendingPathComponent("Corvo", isDirectory: true)
     }
 
-    /// Abre o banco. `url == nil` abre em memória — é o que os testes usam.
+    /// Opens the database. `url == nil` opens in memory — that is what tests use.
     static func make(at url: URL?) throws -> DatabaseQueue {
         var config = Configuration()
         config.foreignKeysEnabled = true
@@ -48,9 +48,10 @@ enum AppDatabase {
                 t.column("createdAt", .datetime).notNull()
                 t.column("lastUsedAt", .datetime)
             }
-            // ponytail: busca é LIKE sobre `text` e `sourceName`. Com o teto de
-            // 1000 itens da política de retenção isso responde em microssegundos.
-            // Se o teto subir muito, trocar por tabela virtual FTS5 + triggers.
+            // ponytail: search is a LIKE over `text` and `sourceName`. With the
+            // 1000-item ceiling from the retention policy that answers in
+            // microseconds. If the ceiling grows a lot, move to an FTS5 virtual
+            // table plus triggers.
             try db.create(index: "idx_item_hash", on: "item",
                           columns: ["contentHash"], unique: true)
             try db.create(index: "idx_item_createdAt", on: "item", columns: ["createdAt"])

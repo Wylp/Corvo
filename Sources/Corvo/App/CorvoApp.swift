@@ -4,7 +4,7 @@ import SwiftUI
 struct CorvoApp: App {
     var body: some Scene {
         MenuBarExtra("Corvo", systemImage: "bird") {
-            Button("Sair") { NSApplication.shared.terminate(nil) }
+            Button("Quit") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
         }
     }

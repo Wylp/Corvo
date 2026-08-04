@@ -1,22 +1,23 @@
 import AppKit
 
-/// Só o que o monitor precisa do pasteboard. Existe para o teste poder
-/// substituir o `NSPasteboard` real, que é estado global do sistema.
+/// Only what the monitor needs from the pasteboard. It exists so tests can
+/// replace the real `NSPasteboard`, which is global system state.
 ///
-/// A propriedade se chama `tipos`, não `types`: `NSPasteboard.types` já existe
-/// (e é opcional), então redeclarar na extensão daria `invalid redeclaration`.
+/// The property is called `availableTypes`, not `types`: `NSPasteboard.types`
+/// already exists (and is optional), so redeclaring it in the extension would
+/// be an `invalid redeclaration`.
 protocol PasteboardReading: AnyObject {
     var changeCount: Int { get }
-    var tipos: [NSPasteboard.PasteboardType] { get }
+    var availableTypes: [NSPasteboard.PasteboardType] { get }
     func data(forType type: NSPasteboard.PasteboardType) -> Data?
     func string(forType type: NSPasteboard.PasteboardType) -> String?
     func fileURLs() -> [URL]
 }
 
 extension NSPasteboard: PasteboardReading {
-    var tipos: [NSPasteboard.PasteboardType] {
-        // flatMap, não first: a guarda de sigilo precisa enxergar o marcador em
-        // qualquer item, já que string(forType:) lê o pasteboard inteiro.
+    var availableTypes: [NSPasteboard.PasteboardType] {
+        // flatMap, not first: the secrecy guard has to see the marker on any
+        // item, since string(forType:) reads the whole pasteboard.
         pasteboardItems?.flatMap(\.types) ?? []
     }
 

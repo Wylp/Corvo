@@ -8,13 +8,13 @@ enum ClipKind: String, Codable, CaseIterable, DatabaseValueConvertible {
 struct ClipItem: Codable, Identifiable, Equatable, Hashable {
     var id: Int64?
     var kind: ClipKind
-    /// Conteúdo para `.text`; nome legível para `.image` e `.file`.
+    /// Content for `.text`; human-readable name for `.image` and `.file`.
     var text: String?
-    /// Caminho relativo dentro do diretório de blobs, só para `.image`.
+    /// Path relative to the blob directory, `.image` only.
     var blobPath: String?
-    /// Caminho absoluto original, só para `.file`. Não copiamos o arquivo.
+    /// Original absolute path, `.file` only. We never copy the file.
     var filePath: String?
-    /// `public.url` quando veio junto do conteúdo.
+    /// `public.url` when it came along with the content.
     var url: String?
     var sourceBundleId: String?
     var sourceName: String?

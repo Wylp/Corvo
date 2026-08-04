@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import Corvo
 
-private let agora = Date(timeIntervalSince1970: 1_700_000_000)
+private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-private func ambiente() throws -> (ItemRepository, BlobStore, Retention, URL) {
+private func makeEnvironment() throws -> (ItemRepository, BlobStore, Retention, URL) {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("corvo-ret-\(UUID().uuidString)")
     let blobs = BlobStore(directory: dir)
@@ -12,154 +12,154 @@ private func ambiente() throws -> (ItemRepository, BlobStore, Retention, URL) {
     return (repo, blobs, Retention(repo: repo, blobs: blobs), dir)
 }
 
-private func texto(_ s: String) -> CapturedItem {
+private func textItem(_ s: String) -> CapturedItem {
     CapturedItem(kind: .text, text: s, imageData: nil,
                  filePath: nil, url: nil, contentHash: s)
 }
 
-@Test func podaPorIdadeRemoveOsAntigos() throws {
-    let (repo, _, retencao, dir) = try ambiente()
+@Test func ageBasedPruneRemovesOldItems() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    try repo.insert(texto("velho"), source: nil, now: agora.addingTimeInterval(-40 * 86400))
-    try repo.insert(texto("novo"), source: nil, now: agora)
+    try repo.insert(textItem("old"), source: nil, now: now.addingTimeInterval(-40 * 86400))
+    try repo.insert(textItem("new"), source: nil, now: now)
 
-    let removidos = try retencao.prune(policy: .padrao, now: agora)
+    let removed = try retention.prune(policy: .standard, now: now)
 
-    #expect(removidos == 1)
-    let restantes = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
-    #expect(restantes.map(\.text) == ["novo"])
+    #expect(removed == 1)
+    let remaining = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(remaining.map(\.text) == ["new"])
 }
 
-@Test func fixadosEItensComTagNuncaExpiram() throws {
-    let (repo, _, retencao, dir) = try ambiente()
+@Test func pinnedAndTaggedItemsNeverExpire() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    let antigo = agora.addingTimeInterval(-40 * 86400)
-    let fixado = try repo.insert(texto("fixado"), source: nil, now: antigo)
-    let comTag = try repo.insert(texto("com tag"), source: nil, now: antigo)
-    try repo.insert(texto("descartável"), source: nil, now: antigo)
-    try repo.setPinned(fixado, true)
-    try repo.addTag(named: "guardar", to: comTag)
+    let oldDate = now.addingTimeInterval(-40 * 86400)
+    let pinned = try repo.insert(textItem("pinned"), source: nil, now: oldDate)
+    let tagged = try repo.insert(textItem("tagged"), source: nil, now: oldDate)
+    try repo.insert(textItem("disposable"), source: nil, now: oldDate)
+    try repo.setPinned(pinned, true)
+    try repo.addTag(named: "keep", to: tagged)
 
-    let removidos = try retencao.prune(policy: .padrao, now: agora)
+    let removed = try retention.prune(policy: .standard, now: now)
 
-    #expect(removidos == 1)
-    let restantes = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
-    #expect(Set(restantes.compactMap(\.text)) == ["fixado", "com tag"])
+    #expect(removed == 1)
+    let remaining = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(Set(remaining.compactMap(\.text)) == ["pinned", "tagged"])
 }
 
-@Test func podaPorQuantidadeNaoContaProtegidos() throws {
-    let (repo, _, retencao, dir) = try ambiente()
+@Test func countBasedPruneDoesNotCountProtectedItems() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    let fixado = try repo.insert(texto("fixado"), source: nil, now: agora)
-    try repo.setPinned(fixado, true)
+    let pinned = try repo.insert(textItem("pinned"), source: nil, now: now)
+    try repo.setPinned(pinned, true)
     for i in 0..<5 {
-        try repo.insert(texto("item \(i)"), source: nil,
-                        now: agora.addingTimeInterval(Double(i)))
+        try repo.insert(textItem("item \(i)"), source: nil,
+                        now: now.addingTimeInterval(Double(i)))
     }
 
-    let politica = RetentionPolicy(maxItems: 3, maxAge: .greatestFiniteMagnitude)
-    let removidos = try retencao.prune(policy: politica, now: agora)
+    let policy = RetentionPolicy(maxItems: 3, maxAge: .greatestFiniteMagnitude)
+    let removed = try retention.prune(policy: policy, now: now)
 
-    // 5 desprotegidos, teto 3 → remove os 2 mais antigos. Fixado permanece.
-    #expect(removidos == 2)
-    let restantes = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
-    #expect(restantes.count == 4)
+    // 5 unprotected, ceiling 3 → removes the 2 oldest. The pinned one stays.
+    #expect(removed == 2)
+    let remaining = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(remaining.count == 4)
 }
 
-@Test func podaApagaBlobsQueFicaramOrfaos() throws {
-    let (repo, blobs, retencao, dir) = try ambiente()
+@Test func pruneDeletesBlobsThatBecameOrphans() throws {
+    let (repo, blobs, retention, dir) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
     let png = Data([0x89, 0x50])
     try repo.insert(CapturedItem(kind: .image, text: "img", imageData: png,
-                                 filePath: nil, url: nil, contentHash: "velha"),
-                    source: nil, now: agora.addingTimeInterval(-40 * 86400))
+                                 filePath: nil, url: nil, contentHash: "old"),
+                    source: nil, now: now.addingTimeInterval(-40 * 86400))
 
-    #expect(FileManager.default.fileExists(atPath: blobs.url(for: "velha.png").path))
+    #expect(FileManager.default.fileExists(atPath: blobs.url(for: "old.png").path))
 
-    try retencao.prune(policy: .padrao, now: agora)
+    try retention.prune(policy: .standard, now: now)
 
-    #expect(!FileManager.default.fileExists(atPath: blobs.url(for: "velha.png").path))
+    #expect(!FileManager.default.fileExists(atPath: blobs.url(for: "old.png").path))
 }
 
-private func conteudos(_ repo: ItemRepository) throws -> Set<String> {
+private func contents(_ repo: ItemRepository) throws -> Set<String> {
     Set(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 500)
         .compactMap(\.text))
 }
 
-/// A cláusula de proteção aparece em DOIS DELETEs separados. `fixadosEItensComTagNuncaExpiram`
-/// só exercita o caminho de idade, e `podaPorQuantidadeNaoContaProtegidos` só usa item
-/// fixado — nada cobria tag no caminho de quantidade. Faltar o EXISTS ali apagaria em
-/// silêncio itens que o usuário marcou para guardar.
-@Test func tagProtegeTambemNaPodaPorQuantidade() throws {
-    let (repo, _, retencao, dir) = try ambiente()
+/// The protection clause appears in TWO separate DELETEs. `pinnedAndTaggedItemsNeverExpire`
+/// only exercises the age path, and `countBasedPruneDoesNotCountProtectedItems` only uses a
+/// pinned item — nothing covered tags on the count path. A missing EXISTS there would
+/// silently delete items the user marked to keep.
+@Test func tagAlsoProtectsOnTheCountBasedPrune() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
     for i in 0..<5 {
-        let id = try repo.insert(texto("comtag\(i)"), source: nil,
-                                 now: agora.addingTimeInterval(Double(i)))
-        try repo.addTag(named: "guardar", to: id)
+        let id = try repo.insert(textItem("tagged\(i)"), source: nil,
+                                 now: now.addingTimeInterval(Double(i)))
+        try repo.addTag(named: "keep", to: id)
     }
     for i in 0..<3 {
-        try repo.insert(texto("sotag\(i)"), source: nil,
-                        now: agora.addingTimeInterval(Double(100 + i)))
+        try repo.insert(textItem("untagged\(i)"), source: nil,
+                        now: now.addingTimeInterval(Double(100 + i)))
     }
 
-    let removidos = try retencao.prune(
+    let removed = try retention.prune(
         policy: RetentionPolicy(maxItems: 2, maxAge: .greatestFiniteMagnitude),
-        now: agora.addingTimeInterval(1000))
+        now: now.addingTimeInterval(1000))
 
-    #expect(removidos == 1)
-    #expect(try conteudos(repo) == ["comtag0", "comtag1", "comtag2", "comtag3",
-                                    "comtag4", "sotag1", "sotag2"])
+    #expect(removed == 1)
+    #expect(try contents(repo) == ["tagged0", "tagged1", "tagged2", "tagged3",
+                                   "tagged4", "untagged1", "untagged2"])
 }
 
-/// `LIMIT -1 OFFSET ?` pula os N mais novos e apaga o resto. Trocar por `LIMIT ?`
-/// inverteria o comportamento mantendo a MESMA contagem de sobreviventes — por isso
-/// este teste confere quais itens sobraram por conteúdo, não pelo total.
-@Test func podaPorQuantidadeApagaOsMaisAntigosNaoOsMaisNovos() throws {
-    let (repo, _, retencao, dir) = try ambiente()
+/// `LIMIT -1 OFFSET ?` skips the N newest and deletes the rest. Swapping it for `LIMIT ?`
+/// would invert the behaviour while keeping the SAME survivor count — which is why this
+/// test checks which items survived by content, not by total.
+@Test func countBasedPruneDeletesTheOldestNotTheNewest() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
     for i in 0..<5 {
-        try repo.insert(texto("i\(i)"), source: nil,
-                        now: agora.addingTimeInterval(Double(i)))
+        try repo.insert(textItem("i\(i)"), source: nil,
+                        now: now.addingTimeInterval(Double(i)))
     }
 
-    let removidos = try retencao.prune(
+    let removed = try retention.prune(
         policy: RetentionPolicy(maxItems: 2, maxAge: .greatestFiniteMagnitude),
-        now: agora.addingTimeInterval(1000))
+        now: now.addingTimeInterval(1000))
 
-    #expect(removidos == 3)
-    #expect(try conteudos(repo) == ["i3", "i4"])
+    #expect(removed == 3)
+    #expect(try contents(repo) == ["i3", "i4"])
 }
 
-/// As duas políticas mordendo ao mesmo tempo: a contagem devolvida não pode somar
-/// o mesmo item nos dois DELETEs.
-@Test func idadeEQuantidadePodamJuntasSemContarDuasVezes() throws {
-    let (repo, _, retencao, dir) = try ambiente()
+/// Both policies biting at once: the returned count must not add the same item twice
+/// across the two DELETEs.
+@Test func ageAndCountPruneTogetherWithoutDoubleCounting() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    let hoje = agora.addingTimeInterval(1000)
-    try repo.insert(texto("velho0"), source: nil, now: hoje.addingTimeInterval(-40 * 86400))
-    try repo.insert(texto("velho1"), source: nil, now: hoje.addingTimeInterval(-35 * 86400))
+    let today = now.addingTimeInterval(1000)
+    try repo.insert(textItem("old0"), source: nil, now: today.addingTimeInterval(-40 * 86400))
+    try repo.insert(textItem("old1"), source: nil, now: today.addingTimeInterval(-35 * 86400))
     for i in 0..<4 {
-        try repo.insert(texto("novo\(i)"), source: nil,
-                        now: hoje.addingTimeInterval(Double(i) - 100))
+        try repo.insert(textItem("new\(i)"), source: nil,
+                        now: today.addingTimeInterval(Double(i) - 100))
     }
-    let protegido = try repo.insert(texto("velhoComTag"), source: nil,
-                                    now: hoje.addingTimeInterval(-50 * 86400))
-    try repo.addTag(named: "guardar", to: protegido)
+    let protected = try repo.insert(textItem("oldTagged"), source: nil,
+                                    now: today.addingTimeInterval(-50 * 86400))
+    try repo.addTag(named: "keep", to: protected)
 
-    let antes = try conteudos(repo).count
-    let removidos = try retencao.prune(
-        policy: RetentionPolicy(maxItems: 2, maxAge: 30 * 86400), now: hoje)
-    let depois = try conteudos(repo)
+    let before = try contents(repo).count
+    let removed = try retention.prune(
+        policy: RetentionPolicy(maxItems: 2, maxAge: 30 * 86400), now: today)
+    let after = try contents(repo)
 
-    #expect(removidos == antes - depois.count)
-    #expect(removidos == 4)
-    #expect(depois == ["velhoComTag", "novo2", "novo3"])
+    #expect(removed == before - after.count)
+    #expect(removed == 4)
+    #expect(after == ["oldTagged", "new2", "new3"])
 }

@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// Conteúdo lido do pasteboard, antes de virar linha no banco.
+/// Content read from the pasteboard, before it becomes a database row.
 struct CapturedItem: Equatable {
     var kind: ClipKind
     var text: String?
@@ -32,8 +32,9 @@ final class ItemRepository {
         self.blobs = blobs
     }
 
-    /// Insere. Se o `contentHash` já existir, promove o item existente ao topo
-    /// preservando tags, pin e id — recopiar não deve custar sua organização.
+    /// Inserts. If `contentHash` already exists, promotes the existing item to
+    /// the top keeping tags, pin and id — recopying must not cost you your
+    /// organization.
     @discardableResult
     func insert(_ captured: CapturedItem, source: ItemSource?, now: Date) throws -> Int64 {
         var blobPath: String?
@@ -42,9 +43,9 @@ final class ItemRepository {
         }
 
         return try dbQueue.write { db in
-            if let existente = try ClipItem
+            if let existing = try ClipItem
                 .filter(ClipItem.Columns.contentHash == captured.contentHash)
-                .fetchOne(db), let id = existente.id {
+                .fetchOne(db), let id = existing.id {
                 try db.execute(sql: "UPDATE item SET createdAt = ? WHERE id = ?",
                                arguments: [now, id])
                 return id
@@ -69,8 +70,8 @@ final class ItemRepository {
         }
     }
 
-    /// `text` casa conteúdo **ou** nome da fonte, de modo que digitar "slack"
-    /// filtre por origem sem passar pela barra lateral.
+    /// `text` matches content **or** source name, so that typing "slack"
+    /// filters by origin without going through the sidebar.
     func search(text: String, sourceBundleId: String?, tagId: Int64?,
                 limit: Int) throws -> [ClipItem] {
         var sql = "SELECT item.* FROM item"
@@ -81,20 +82,20 @@ final class ItemRepository {
             args.append(tagId)
         }
 
-        var condicoes: [String] = []
-        let busca = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !busca.isEmpty {
-            // ponytail: LIKE com scan. Ver comentário do índice em AppDatabase.
-            condicoes.append("(item.text LIKE ? OR item.sourceName LIKE ?)")
-            args.append("%\(busca)%")
-            args.append("%\(busca)%")
+        var conditions: [String] = []
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            // ponytail: LIKE with a scan. See the index comment in AppDatabase.
+            conditions.append("(item.text LIKE ? OR item.sourceName LIKE ?)")
+            args.append("%\(query)%")
+            args.append("%\(query)%")
         }
         if let sourceBundleId {
-            condicoes.append("item.sourceBundleId = ?")
+            conditions.append("item.sourceBundleId = ?")
             args.append(sourceBundleId)
         }
-        if !condicoes.isEmpty {
-            sql += " WHERE " + condicoes.joined(separator: " AND ")
+        if !conditions.isEmpty {
+            sql += " WHERE " + conditions.joined(separator: " AND ")
         }
 
         sql += " ORDER BY item.pinned DESC, item.createdAt DESC LIMIT ?"
@@ -140,17 +141,17 @@ final class ItemRepository {
     }
 
     func addTag(named name: String, to itemId: Int64) throws {
-        let limpo = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !limpo.isEmpty else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         try dbQueue.write { db in
-            let existente = try Tag.filter(Tag.Columns.name == limpo).fetchOne(db)
+            let existing = try Tag.filter(Tag.Columns.name == trimmed).fetchOne(db)
             let tagId: Int64
-            if let existente, let id = existente.id {
+            if let existing, let id = existing.id {
                 tagId = id
             } else {
-                var nova = Tag(id: nil, name: limpo, color: nil)
-                try nova.insert(db)
-                tagId = nova.id!
+                var newTag = Tag(id: nil, name: trimmed, color: nil)
+                try newTag.insert(db)
+                tagId = newTag.id!
             }
             try ItemTag(itemId: itemId, tagId: tagId).insert(db, onConflict: .ignore)
         }

@@ -9,18 +9,18 @@ private func tempDir() -> URL {
     return url
 }
 
-@Test func gravaEDevolveCaminhoRelativo() throws {
+@Test func storesAndReturnsARelativePath() throws {
     let dir = tempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
     let store = BlobStore(directory: dir)
 
-    let caminho = try store.store(Data([1, 2, 3]), hash: "abc123", ext: "png")
+    let path = try store.store(Data([1, 2, 3]), hash: "abc123", ext: "png")
 
-    #expect(caminho == "abc123.png")
-    #expect(FileManager.default.fileExists(atPath: store.url(for: caminho).path))
+    #expect(path == "abc123.png")
+    #expect(FileManager.default.fileExists(atPath: store.url(for: path).path))
 }
 
-@Test func gravarOMesmoHashDuasVezesNaoDuplica() throws {
+@Test func storingTheSameHashTwiceDoesNotDuplicate() throws {
     let dir = tempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
     let store = BlobStore(directory: dir)
@@ -28,22 +28,22 @@ private func tempDir() -> URL {
     _ = try store.store(Data([1, 2, 3]), hash: "abc123", ext: "png")
     _ = try store.store(Data([1, 2, 3]), hash: "abc123", ext: "png")
 
-    let arquivos = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-    #expect(arquivos.count == 1)
+    let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+    #expect(files.count == 1)
 }
 
-@Test func coletaRemoveOrfaosEPreservaVivos() throws {
+@Test func garbageCollectionRemovesOrphansAndKeepsLiveFiles() throws {
     let dir = tempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
     let store = BlobStore(directory: dir)
 
-    let vivo = try store.store(Data([1]), hash: "vivo", ext: "png")
-    _ = try store.store(Data([2]), hash: "orfao", ext: "png")
+    let live = try store.store(Data([1]), hash: "live", ext: "png")
+    _ = try store.store(Data([2]), hash: "orphan", ext: "png")
 
-    let removidos = try store.collectGarbage(keeping: [vivo])
+    let removed = try store.collectGarbage(keeping: [live])
 
-    #expect(removidos == 1)
-    #expect(FileManager.default.fileExists(atPath: store.url(for: vivo).path))
-    let arquivos = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-    #expect(arquivos == ["vivo.png"])
+    #expect(removed == 1)
+    #expect(FileManager.default.fileExists(atPath: store.url(for: live).path))
+    let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+    #expect(files == ["live.png"])
 }

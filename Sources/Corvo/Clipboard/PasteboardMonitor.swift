@@ -13,7 +13,7 @@ final class PasteboardMonitor {
     private let tracker: SourceTracker
     let prefs: Preferences
 
-    private var ultimoChangeCount: Int
+    private var lastChangeCount: Int
     private var timer: Timer?
 
     init(pasteboard: PasteboardReading, repo: ItemRepository,
@@ -22,12 +22,12 @@ final class PasteboardMonitor {
         self.repo = repo
         self.tracker = tracker
         self.prefs = prefs
-        self.ultimoChangeCount = pasteboard.changeCount
+        self.lastChangeCount = pasteboard.changeCount
     }
 
     func start() {
-        // ponytail: NSPasteboard não notifica mudanças — poll do changeCount é a
-        // única via. Todo gerenciador de clipboard do macOS faz assim.
+        // ponytail: NSPasteboard does not notify on change — polling changeCount
+        // is the only way. Every macOS clipboard manager does it like this.
         let t = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 try? self?.poll(now: Date())
@@ -43,62 +43,64 @@ final class PasteboardMonitor {
     }
 
     func poll(now: Date) throws {
-        let atual = pasteboard.changeCount
-        guard atual != ultimoChangeCount else { return }
-        ultimoChangeCount = atual
+        let current = pasteboard.changeCount
+        guard current != lastChangeCount else { return }
+        lastChangeCount = current
 
-        let tipos = Set(pasteboard.tipos)
+        let types = Set(pasteboard.availableTypes)
 
-        // Trust boundary: gerenciadores de senha marcam o conteúdo. Descartamos
-        // antes de qualquer gravação, sem passar por disco nem por banco.
-        guard !tipos.contains(Self.concealed), !tipos.contains(Self.transient) else { return }
+        // Trust boundary: password managers mark their content. We discard it
+        // before any write, so it never touches disk or database.
+        guard !types.contains(Self.concealed), !types.contains(Self.transient) else { return }
 
-        let declarada = pasteboard.string(forType: Self.sourceType)
+        let declared = pasteboard.string(forType: Self.sourceType)
             .map { ItemSource(bundleId: $0, name: $0) }
-        let inferida = tracker.fonteDaCaptura(at: now)
-        let fonte = declarada ?? inferida
+        let inferred = tracker.captureSource(at: now)
+        let source = declared ?? inferred
 
-        // A blocklist confere as DUAS identidades: um app que declare um id que
-        // não é o seu não pode contornar o bloqueio que o usuário configurou.
-        if [declarada?.bundleId, inferida?.bundleId].compactMap({ $0 })
+        // The blocklist checks BOTH identities: an app declaring an id that is
+        // not its own must not bypass the block the user configured.
+        if [declared?.bundleId, inferred?.bundleId].compactMap({ $0 })
             .contains(where: prefs.blocklist.contains) { return }
 
-        guard let capturado = capturar(tipos: tipos) else { return }
-        try repo.insert(capturado, source: fonte, now: now)
+        guard let captured = capture(types: types) else { return }
+        try repo.insert(captured, source: source, now: now)
     }
 
-    private func capturar(tipos: Set<NSPasteboard.PasteboardType>) -> CapturedItem? {
+    private func capture(types: Set<NSPasteboard.PasteboardType>) -> CapturedItem? {
         let url = pasteboard.string(forType: .URL)
 
-        // ponytail: só o primeiro arquivo de uma cópia múltipla é capturado; os
-        // demais são descartados em silêncio. Upgrade: um CapturedItem por
-        // arquivo, ou serializar a lista, se cópia múltipla virar caso comum.
-        let arquivos = pasteboard.fileURLs()
-        if let arquivo = arquivos.first {
-            return CapturedItem(kind: .file, text: arquivo.lastPathComponent,
-                                imageData: nil, filePath: arquivo.path, url: url,
-                                contentHash: Self.hash(of: Data(arquivo.path.utf8)))
+        // ponytail: only the first file of a multi-file copy is captured; the
+        // rest are dropped silently. Upgrade: one CapturedItem per file, or
+        // serialize the list, if multi-file copies become a common case.
+        let files = pasteboard.fileURLs()
+        if let file = files.first {
+            return CapturedItem(kind: .file, text: file.lastPathComponent,
+                                imageData: nil, filePath: file.path, url: url,
+                                contentHash: Self.hash(of: Data(file.path.utf8)))
         }
 
-        if tipos.contains(.tiff) || tipos.contains(.png) {
-            let tipo: NSPasteboard.PasteboardType = tipos.contains(.png) ? .png : .tiff
-            guard let bruto = pasteboard.data(forType: tipo),
-                  let png = Self.paraPNG(bruto) else { return nil }
-            return CapturedItem(kind: .image, text: "Imagem", imageData: png,
+        if types.contains(.tiff) || types.contains(.png) {
+            let type: NSPasteboard.PasteboardType = types.contains(.png) ? .png : .tiff
+            guard let raw = pasteboard.data(forType: type),
+                  let png = Self.toPNG(raw) else { return nil }
+            // "Image" is stored content, not UI copy: it is the row's readable
+            // name. UI strings go through the String Catalog (Task 10).
+            return CapturedItem(kind: .image, text: "Image", imageData: png,
                                 filePath: nil, url: url,
                                 contentHash: Self.hash(of: png))
         }
 
-        guard let texto = pasteboard.string(forType: .string),
-              !texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard let text = pasteboard.string(forType: .string),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return nil }
-        return CapturedItem(kind: .text, text: texto, imageData: nil,
+        return CapturedItem(kind: .text, text: text, imageData: nil,
                             filePath: nil, url: url,
-                            contentHash: Self.hash(of: Data(texto.utf8)))
+                            contentHash: Self.hash(of: Data(text.utf8)))
     }
 
-    private static func paraPNG(_ dados: Data) -> Data? {
-        guard let rep = NSBitmapImageRep(data: dados) else { return dados }
+    private static func toPNG(_ data: Data) -> Data? {
+        guard let rep = NSBitmapImageRep(data: data) else { return data }
         return rep.representation(using: .png, properties: [:])
     }
 

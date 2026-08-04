@@ -6,35 +6,35 @@ private let slack = ItemSource(bundleId: "com.tinyspeck.slackmacgap", name: "Sla
 private let terminal = ItemSource(bundleId: "com.apple.Terminal", name: "Terminal")
 private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
 
-@Test @MainActor func semAtivacaoRegistradaNaoHaFonte() {
+@Test @MainActor func withNoRecordedActivationThereIsNoSource() {
     let tracker = SourceTracker()
-    #expect(tracker.fonteDaCaptura(at: t0) == nil)
+    #expect(tracker.captureSource(at: t0) == nil)
 }
 
-@Test @MainActor func trocaRecenteCreditaOAppAnterior() {
-    let tracker = SourceTracker(janela: 0.3)
-    tracker.registrarAtivacao(slack, at: t0)
-    tracker.registrarAtivacao(terminal, at: t0.addingTimeInterval(1))
+@Test @MainActor func aRecentSwitchCreditsThePreviousApp() {
+    let tracker = SourceTracker(switchWindow: 0.3)
+    tracker.recordActivation(slack, at: t0)
+    tracker.recordActivation(terminal, at: t0.addingTimeInterval(1))
 
-    // Copiou no Slack e trocou pro Terminal 0,1s antes do poll.
-    let fonte = tracker.fonteDaCaptura(at: t0.addingTimeInterval(1.1))
+    // Copied in Slack and switched to Terminal 0.1s before the poll.
+    let source = tracker.captureSource(at: t0.addingTimeInterval(1.1))
 
-    #expect(fonte == slack)
+    #expect(source == slack)
 }
 
-@Test @MainActor func trocaAntigaCreditaOAppAtual() {
-    let tracker = SourceTracker(janela: 0.3)
-    tracker.registrarAtivacao(slack, at: t0)
-    tracker.registrarAtivacao(terminal, at: t0.addingTimeInterval(1))
+@Test @MainActor func anOldSwitchCreditsTheCurrentApp() {
+    let tracker = SourceTracker(switchWindow: 0.3)
+    tracker.recordActivation(slack, at: t0)
+    tracker.recordActivation(terminal, at: t0.addingTimeInterval(1))
 
-    let fonte = tracker.fonteDaCaptura(at: t0.addingTimeInterval(5))
+    let source = tracker.captureSource(at: t0.addingTimeInterval(5))
 
-    #expect(fonte == terminal)
+    #expect(source == terminal)
 }
 
-@Test @MainActor func semAppAnteriorATrocaRecenteCreditaOAtual() {
-    let tracker = SourceTracker(janela: 0.3)
-    tracker.registrarAtivacao(slack, at: t0)
+@Test @MainActor func withNoPreviousAppARecentSwitchCreditsTheCurrentOne() {
+    let tracker = SourceTracker(switchWindow: 0.3)
+    tracker.recordActivation(slack, at: t0)
 
-    #expect(tracker.fonteDaCaptura(at: t0.addingTimeInterval(0.1)) == slack)
+    #expect(tracker.captureSource(at: t0.addingTimeInterval(0.1)) == slack)
 }

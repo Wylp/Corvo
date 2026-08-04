@@ -3,34 +3,34 @@ import Foundation
 import Testing
 @testable import Corvo
 
-final class PasteboardFalso: PasteboardReading, @unchecked Sendable {
+final class FakePasteboard: PasteboardReading, @unchecked Sendable {
     var changeCount = 0
-    var tipos: [NSPasteboard.PasteboardType] = []
-    var strings: [NSPasteboard.PasteboardType: String] = [:]
-    var datas: [NSPasteboard.PasteboardType: Data] = [:]
+    var availableTypes: [NSPasteboard.PasteboardType] = []
+    var stringsByType: [NSPasteboard.PasteboardType: String] = [:]
+    var dataByType: [NSPasteboard.PasteboardType: Data] = [:]
     var urls: [URL] = []
 
-    func data(forType t: NSPasteboard.PasteboardType) -> Data? { datas[t] }
-    func string(forType t: NSPasteboard.PasteboardType) -> String? { strings[t] }
+    func data(forType t: NSPasteboard.PasteboardType) -> Data? { dataByType[t] }
+    func string(forType t: NSPasteboard.PasteboardType) -> String? { stringsByType[t] }
     func fileURLs() -> [URL] { urls }
 
-    func copiarTexto(_ s: String) {
+    func copyText(_ s: String) {
         changeCount += 1
-        tipos = [.string]
-        strings = [.string: s]
-        datas = [:]
+        availableTypes = [.string]
+        stringsByType = [.string: s]
+        dataByType = [:]
         urls = []
     }
 }
 
 @MainActor
-private func ambiente() throws
-    -> (PasteboardFalso, ItemRepository, PasteboardMonitor, URL, SourceTracker, Preferences) {
+private func makeEnvironment() throws
+    -> (FakePasteboard, ItemRepository, PasteboardMonitor, URL, SourceTracker, Preferences) {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("corvo-mon-\(UUID().uuidString)")
     let repo = ItemRepository(dbQueue: try AppDatabase.make(at: nil),
                               blobs: BlobStore(directory: dir))
-    let pb = PasteboardFalso()
+    let pb = FakePasteboard()
     let tracker = SourceTracker()
     let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
     let monitor = PasteboardMonitor(pasteboard: pb, repo: repo,
@@ -40,122 +40,122 @@ private func ambiente() throws
 
 private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
 
-@MainActor @Test func capturaTextoQuandoOChangeCountMuda() throws {
-    let (pb, repo, monitor, dir, _, _) = try ambiente()
+@MainActor @Test func capturesTextWhenTheChangeCountChanges() throws {
+    let (pb, repo, monitor, dir, _, _) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    pb.copiarTexto("olá")
+    pb.copyText("hello")
     try monitor.poll(now: t0)
 
-    let itens = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
-    #expect(itens.map(\.text) == ["olá"])
+    let items = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(items.map(\.text) == ["hello"])
 }
 
-@MainActor @Test func naoRecapturaSeOChangeCountNaoMudou() throws {
-    let (pb, repo, monitor, dir, _, _) = try ambiente()
+@MainActor @Test func doesNotRecaptureWhenTheChangeCountIsUnchanged() throws {
+    let (pb, repo, monitor, dir, _, _) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    pb.copiarTexto("olá")
+    pb.copyText("hello")
     try monitor.poll(now: t0)
     try monitor.poll(now: t0.addingTimeInterval(0.3))
 
-    let itens = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
-    #expect(itens.count == 1)
+    let items = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(items.count == 1)
 }
 
-@MainActor @Test func descartaConteudoMarcadoComoSigiloso() throws {
-    let (pb, repo, monitor, dir, _, _) = try ambiente()
+@MainActor @Test func discardsContentMarkedAsConcealed() throws {
+    let (pb, repo, monitor, dir, _, _) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    pb.copiarTexto("senha-secreta")
-    pb.tipos.append(.init(rawValue: "org.nspasteboard.ConcealedType"))
+    pb.copyText("secret-password")
+    pb.availableTypes.append(.init(rawValue: "org.nspasteboard.ConcealedType"))
     try monitor.poll(now: t0)
 
-    let itens = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
-    #expect(itens.isEmpty)
+    let items = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(items.isEmpty)
 }
 
-@MainActor @Test func descartaConteudoTransitorio() throws {
-    let (pb, repo, monitor, dir, _, _) = try ambiente()
+@MainActor @Test func discardsTransientContent() throws {
+    let (pb, repo, monitor, dir, _, _) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    pb.copiarTexto("temporário")
-    pb.tipos.append(.init(rawValue: "org.nspasteboard.TransientType"))
+    pb.copyText("temporary")
+    pb.availableTypes.append(.init(rawValue: "org.nspasteboard.TransientType"))
     try monitor.poll(now: t0)
 
     #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)
 }
 
-@MainActor @Test func descartaConteudoDeAppNaBlocklist() throws {
-    let (pb, repo, monitor, dir, _, _) = try ambiente()
+@MainActor @Test func discardsContentFromABlocklistedApp() throws {
+    let (pb, repo, monitor, dir, _, _) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
     monitor.prefs.blocklist = ["com.apple.keychainaccess"]
-    pb.copiarTexto("segredo")
-    pb.tipos.append(.init(rawValue: "org.nspasteboard.source"))
-    pb.strings[.init(rawValue: "org.nspasteboard.source")] = "com.apple.keychainaccess"
+    pb.copyText("secret")
+    pb.availableTypes.append(.init(rawValue: "org.nspasteboard.source"))
+    pb.stringsByType[.init(rawValue: "org.nspasteboard.source")] = "com.apple.keychainaccess"
     try monitor.poll(now: t0)
 
     #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)
 }
 
-@MainActor @Test func descartaTextoVazio() throws {
-    let (pb, repo, monitor, dir, _, _) = try ambiente()
+@MainActor @Test func discardsEmptyText() throws {
+    let (pb, repo, monitor, dir, _, _) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    pb.copiarTexto("   \n  ")
+    pb.copyText("   \n  ")
     try monitor.poll(now: t0)
 
     #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)
 }
 
-// O caminho que roda de verdade: quase nenhum app declara a própria fonte via
-// "org.nspasteboard.source" — a fonte real vem do SourceTracker (foco do
-// sistema). Os dois testes abaixo cobrem esse caminho, um por vez, e o
-// segundo é o controle positivo: sem ele, o primeiro passaria mesmo com o
-// `poll` quebrado e não gravando nada.
-@MainActor @Test func descartaQuandoAFonteInferidaEstaNaBlocklist() throws {
-    let (pb, repo, monitor, dir, tracker, prefs) = try ambiente()
+// The path that actually runs: almost no app declares its own source through
+// "org.nspasteboard.source" — the real source comes from SourceTracker (system
+// focus). The two tests below cover that path, one at a time, and the second is
+// the positive control: without it, the first would pass even with `poll`
+// broken and storing nothing.
+@MainActor @Test func discardsWhenTheInferredSourceIsBlocklisted() throws {
+    let (pb, repo, monitor, dir, tracker, prefs) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
     prefs.blocklist = ["com.agilebits.onepassword7"]
-    tracker.registrarAtivacao(
+    tracker.recordActivation(
         ItemSource(bundleId: "com.agilebits.onepassword7", name: "1Password"), at: t0)
-    pb.copiarTexto("segredo")
+    pb.copyText("secret")
     try monitor.poll(now: t0)
 
     #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)
 }
 
-@MainActor @Test func gravaQuandoAFonteInferidaNaoEstaNaBlocklist() throws {
-    let (pb, repo, monitor, dir, tracker, prefs) = try ambiente()
+@MainActor @Test func storesWhenTheInferredSourceIsNotBlocklisted() throws {
+    let (pb, repo, monitor, dir, tracker, prefs) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
     prefs.blocklist = ["com.agilebits.onepassword7"]
-    tracker.registrarAtivacao(ItemSource(bundleId: "com.apple.Safari", name: "Safari"), at: t0)
-    pb.copiarTexto("texto normal")
+    tracker.recordActivation(ItemSource(bundleId: "com.apple.Safari", name: "Safari"), at: t0)
+    pb.copyText("normal text")
     try monitor.poll(now: t0)
 
-    let itens = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
-    #expect(itens.map(\.text) == ["texto normal"])
-    #expect(itens.map(\.sourceBundleId) == ["com.apple.Safari"])
+    let items = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(items.map(\.text) == ["normal text"])
+    #expect(items.map(\.sourceBundleId) == ["com.apple.Safari"])
 }
 
-// Cobre a Correção 1: a fonte declarada não pode encobrir a inferida na
-// checagem da blocklist. O tracker aponta para um app bloqueado; o
-// pasteboard declara um id que não está na blocklist. Antes da correção
-// (`fonte = declarada ?? inferida` avaliado sozinho) este teste falhava — o
-// id declarado vencia e o item era gravado.
-@MainActor @Test func fonteDeclaradaNaoEncobreFonteInferidaNaBlocklist() throws {
-    let (pb, repo, monitor, dir, tracker, prefs) = try ambiente()
+// Covers privacy fix 1: the declared source must not mask the inferred one in
+// the blocklist check. The tracker points at a blocked app; the pasteboard
+// declares an id that is not blocklisted. Before the fix (`source = declared ??
+// inferred` evaluated on its own) this test failed — the declared id won and
+// the item was stored.
+@MainActor @Test func aDeclaredSourceDoesNotMaskTheInferredOneInTheBlocklist() throws {
+    let (pb, repo, monitor, dir, tracker, prefs) = try makeEnvironment()
     defer { try? FileManager.default.removeItem(at: dir) }
 
     prefs.blocklist = ["com.agilebits.onepassword7"]
-    tracker.registrarAtivacao(
+    tracker.recordActivation(
         ItemSource(bundleId: "com.agilebits.onepassword7", name: "1Password"), at: t0)
-    pb.copiarTexto("segredo")
-    pb.tipos.append(.init(rawValue: "org.nspasteboard.source"))
-    pb.strings[.init(rawValue: "org.nspasteboard.source")] = "com.apple.Safari"
+    pb.copyText("secret")
+    pb.availableTypes.append(.init(rawValue: "org.nspasteboard.source"))
+    pb.stringsByType[.init(rawValue: "org.nspasteboard.source")] = "com.apple.Safari"
     try monitor.poll(now: t0)
 
     #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)

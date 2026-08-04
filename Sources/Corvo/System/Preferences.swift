@@ -1,6 +1,6 @@
 import Foundation
 
-/// `UserDefaults` tipado. Um lugar só para tudo que o usuário configura.
+/// Typed `UserDefaults`. One place for everything the user configures.
 final class Preferences {
     private let defaults: UserDefaults
 
@@ -16,20 +16,20 @@ final class Preferences {
     var maxItems: Int {
         get {
             let v = defaults.integer(forKey: "maxItems")
-            return v > 0 ? v : RetentionPolicy.padrao.maxItems
+            return v > 0 ? v : RetentionPolicy.standard.maxItems
         }
         set { defaults.set(newValue, forKey: "maxItems") }
     }
 
-    var maxAgeDias: Int {
+    var maxAgeDays: Int {
         get {
-            let v = defaults.integer(forKey: "maxAgeDias")
-            return v > 0 ? v : Int(RetentionPolicy.padrao.maxAge / 86400)
+            let v = defaults.integer(forKey: "maxAgeDays")
+            return v > 0 ? v : Int(RetentionPolicy.standard.maxAge / 86400)
         }
-        set { defaults.set(newValue, forKey: "maxAgeDias") }
+        set { defaults.set(newValue, forKey: "maxAgeDays") }
     }
 
     var retentionPolicy: RetentionPolicy {
-        RetentionPolicy(maxItems: maxItems, maxAge: Double(maxAgeDias) * 86400)
+        RetentionPolicy(maxItems: maxItems, maxAge: Double(maxAgeDays) * 86400)
     }
 }

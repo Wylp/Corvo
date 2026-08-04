@@ -1,7 +1,7 @@
 import Foundation
 
-/// Guarda dados binários (imagens) em disco, nomeados pelo hash do conteúdo.
-/// O banco guarda só o caminho relativo — blob nunca entra em tabela.
+/// Keeps binary data (images) on disk, named by the content hash.
+/// The database stores only the relative path — a blob never enters a table.
 final class BlobStore {
     private let directory: URL
     private let fm = FileManager.default
@@ -11,28 +11,28 @@ final class BlobStore {
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    /// Idempotente: gravar o mesmo hash de novo não reescreve nem duplica.
+    /// Idempotent: storing the same hash again neither rewrites nor duplicates.
     func store(_ data: Data, hash: String, ext: String) throws -> String {
-        let relativo = "\(hash).\(ext)"
-        let destino = directory.appendingPathComponent(relativo)
-        guard !fm.fileExists(atPath: destino.path) else { return relativo }
-        try data.write(to: destino, options: .atomic)
-        return relativo
+        let relativePath = "\(hash).\(ext)"
+        let destination = directory.appendingPathComponent(relativePath)
+        guard !fm.fileExists(atPath: destination.path) else { return relativePath }
+        try data.write(to: destination, options: .atomic)
+        return relativePath
     }
 
     func url(for relativePath: String) -> URL {
         directory.appendingPathComponent(relativePath)
     }
 
-    /// Remove todo arquivo do diretório que não esteja em `live`.
+    /// Removes every file in the directory that is not in `live`.
     @discardableResult
     func collectGarbage(keeping live: Set<String>) throws -> Int {
-        let existentes = try fm.contentsOfDirectory(atPath: directory.path)
-        var removidos = 0
-        for nome in existentes where !live.contains(nome) {
-            try fm.removeItem(at: directory.appendingPathComponent(nome))
-            removidos += 1
+        let existing = try fm.contentsOfDirectory(atPath: directory.path)
+        var removed = 0
+        for name in existing where !live.contains(name) {
+            try fm.removeItem(at: directory.appendingPathComponent(name))
+            removed += 1
         }
-        return removidos
+        return removed
     }
 }

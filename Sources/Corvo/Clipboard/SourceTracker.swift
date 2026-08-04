@@ -1,49 +1,49 @@
 import AppKit
 
-/// Descobre de qual app veio o conteúdo copiado.
+/// Figures out which app the copied content came from.
 ///
-/// Duas fontes, nesta ordem: a convenção `org.nspasteboard.source` (tratada no
-/// PasteboardMonitor, autoritativa quando presente) e, na falta dela, o app em
-/// foco no momento da captura.
+/// Two sources, in this order: the `org.nspasteboard.source` convention
+/// (handled in PasteboardMonitor, authoritative when present) and, failing
+/// that, the app focused at capture time.
 ///
-/// O poll roda a cada 0,3s, então entre o ⌘C e a leitura o usuário pode ter
-/// trocado de app. Guardamos a ativação anterior com timestamp: se a troca
-/// aconteceu dentro da janela, o crédito vai para o app de antes.
+/// The poll runs every 0.3s, so between the ⌘C and the read the user may have
+/// switched apps. We keep the previous activation with a timestamp: if the
+/// switch happened inside the window, the credit goes to the earlier app.
 @MainActor
 final class SourceTracker {
-    private struct Ativacao {
+    private struct Activation {
         let source: ItemSource
-        let quando: Date
+        let when: Date
     }
 
-    private let janela: TimeInterval
-    private var atual: Ativacao?
-    private var anterior: Ativacao?
+    private let switchWindow: TimeInterval
+    private var current: Activation?
+    private var previous: Activation?
 
-    /// App que estava em foco antes do painel do Corvo aparecer. É para ele que
-    /// o Paster devolve o foco na hora de colar.
-    private(set) var appEmFoco: NSRunningApplication?
+    /// The app that was focused before Corvo's panel appeared. It is the one
+    /// Paster gives focus back to when pasting.
+    private(set) var focusedApp: NSRunningApplication?
 
-    init(janela: TimeInterval = 0.3) {
-        self.janela = janela
+    init(switchWindow: TimeInterval = 0.3) {
+        self.switchWindow = switchWindow
     }
 
-    func registrarAtivacao(_ source: ItemSource, at quando: Date) {
-        anterior = atual
-        atual = Ativacao(source: source, quando: quando)
+    func recordActivation(_ source: ItemSource, at when: Date) {
+        previous = current
+        current = Activation(source: source, when: when)
     }
 
-    func fonteDaCaptura(at quando: Date) -> ItemSource? {
-        guard let atual else { return nil }
-        guard quando.timeIntervalSince(atual.quando) < janela,
-              let anterior else { return atual.source }
-        return anterior.source
+    func captureSource(at when: Date) -> ItemSource? {
+        guard let current else { return nil }
+        guard when.timeIntervalSince(current.when) < switchWindow,
+              let previous else { return current.source }
+        return previous.source
     }
 
-    func começarAObservarOSistema() {
+    func startObservingSystem() {
         let ws = NSWorkspace.shared
-        if let app = ws.frontmostApplication, let source = Self.fonte(de: app) {
-            registrarAtivacao(source, at: Date())
+        if let app = ws.frontmostApplication, let source = Self.source(of: app) {
+            recordActivation(source, at: Date())
         }
         ws.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -54,15 +54,15 @@ final class SourceTracker {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 if app.bundleIdentifier != Bundle.main.bundleIdentifier {
-                    self.appEmFoco = app
+                    self.focusedApp = app
                 }
-                guard let source = Self.fonte(de: app) else { return }
-                self.registrarAtivacao(source, at: Date())
+                guard let source = Self.source(of: app) else { return }
+                self.recordActivation(source, at: Date())
             }
         }
     }
 
-    private static func fonte(de app: NSRunningApplication) -> ItemSource? {
+    private static func source(of app: NSRunningApplication) -> ItemSource? {
         guard let bundleId = app.bundleIdentifier,
               bundleId != Bundle.main.bundleIdentifier else { return nil }
         return ItemSource(bundleId: bundleId, name: app.localizedName ?? bundleId)
