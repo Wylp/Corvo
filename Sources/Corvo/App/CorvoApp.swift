@@ -23,7 +23,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var model: HistoryModel?
     private var hotkey: GlobalHotkey?
 
+    /// True when this process was launched by `xcodebuild test` as the unit
+    /// tests' host application, rather than by a person.
+    private static var isTestHost: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || ProcessInfo.processInfo.environment["XCTestSessionIdentifier"] != nil
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The test bundle is hosted by this app, so every `xcodebuild test`
+        // launches Corvo for real. Left to start normally it polls the live
+        // pasteboard, writes the user's clippings into their real database and
+        // claims ⌘⇧V — and the host process outlives the test run, so it keeps
+        // doing all three for as long as it is left alone. Tests need the bundle
+        // to exist, not the app to run.
+        guard !Self.isTestHost else { return }
+
         do {
             let env = try AppEnvironment()
             env.start()
