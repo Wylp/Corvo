@@ -75,9 +75,14 @@ final class SourceTracker {
     /// normal state for a login-item agent that starts before the user unlocks.
     /// `menuBarOwningApplication` still names the app the user was really in.
     private static func seedApp(_ ws: NSWorkspace) -> NSRunningApplication? {
-        guard let front = ws.frontmostApplication else { return ws.menuBarOwningApplication }
-        guard isUsableSeed(front.bundleIdentifier) else { return ws.menuBarOwningApplication }
-        return front
+        if let front = ws.frontmostApplication, isUsableSeed(front.bundleIdentifier) {
+            return front
+        }
+        // The fallback gets the same check: during the first moments after login,
+        // before any app owns the menu bar, this one can report loginwindow too.
+        guard let menuBar = ws.menuBarOwningApplication,
+              isUsableSeed(menuBar.bundleIdentifier) else { return nil }
+        return menuBar
     }
 
     nonisolated static func isUsableSeed(_ bundleId: String?) -> Bool {
