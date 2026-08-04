@@ -1,0 +1,18 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Corvo" : {
+      "comment" : "App name. Never translated.",
+      "shouldTranslate" : false
+    },
+    "Quit" : {
+      "comment" : "Menu bar item that terminates the app.",
+      "extractionState" : "manual"
+    },
+    "Show History" : {
+      "comment" : "Menu bar item that opens the floating panel.",
+      "extractionState" : "manual"
+    }
+  },
+  "version" : "1.0"
+}

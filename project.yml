@@ -1,6 +1,7 @@
 name: Corvo
 options:
   bundleIdPrefix: com.wylp
+  developmentLanguage: en
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -22,7 +23,7 @@ targets:
     info:
       path: Corvo-Info.plist
       properties:
-        CFBundleDevelopmentRegion: pt_BR
+        CFBundleDevelopmentRegion: en
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "14.0"
