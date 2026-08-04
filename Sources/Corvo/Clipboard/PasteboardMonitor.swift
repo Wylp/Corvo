@@ -30,7 +30,13 @@ final class PasteboardMonitor {
         // is the only way. Every macOS clipboard manager does it like this.
         let t = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                try? self?.poll(now: Date())
+                do {
+                    try self?.poll(now: Date())
+                } catch {
+                    // A transient database write failure should not stop the
+                    // timer or bother the user, but must leave a trace.
+                    NSLog("Corvo: poll failed: \(error)")
+                }
             }
         }
         RunLoop.main.add(t, forMode: .common)
