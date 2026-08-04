@@ -70,8 +70,10 @@ final class ItemRepository {
         }
     }
 
-    /// `text` matches content **or** source name, so that typing "slack"
-    /// filters by origin without going through the sidebar.
+    /// `text` matches content, source name **or** the name the user gave the
+    /// item, so that typing "slack" filters by origin without going through the
+    /// sidebar and an item named "Claude session about GRDB" is found by either
+    /// word.
     func search(text: String, sourceBundleId: String?, tagId: Int64?,
                 limit: Int) throws -> [ClipItem] {
         var sql = "SELECT item.* FROM item"
@@ -86,7 +88,9 @@ final class ItemRepository {
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !query.isEmpty {
             // ponytail: LIKE with a scan. See the index comment in AppDatabase.
-            conditions.append("(item.text LIKE ? OR item.sourceName LIKE ?)")
+            conditions.append(
+                "(item.text LIKE ? OR item.sourceName LIKE ? OR item.label LIKE ?)")
+            args.append("%\(query)%")
             args.append("%\(query)%")
             args.append("%\(query)%")
         }

@@ -5,6 +5,15 @@ struct Tag: Codable, Identifiable, Equatable, Hashable {
     var id: Int64?
     var name: String
     var color: String?
+    /// The two halves of the tag's rule, stored flat because a tag has at most
+    /// one. Both `nil` is an ordinary manual tag.
+    var pattern: String?
+    var sourceBundleId: String?
+    /// Whether a capture this tag claims should be offered a name. Read by
+    /// `AutoTagger`; the prompting itself is Task 12c.
+    var promptsForName: Bool = false
+
+    var rule: TagRule { TagRule(pattern: pattern, sourceBundleId: sourceBundleId) }
 }
 
 extension Tag: FetchableRecord, MutablePersistableRecord {

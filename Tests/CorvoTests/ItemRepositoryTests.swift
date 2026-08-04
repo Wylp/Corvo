@@ -66,6 +66,28 @@ private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
     #expect(found[0].text == "something else")
 }
 
+/// A named item is findable by any word of the name, not only by its content —
+/// naming a clipping is worthless if it does not make it easier to find again.
+@Test func textSearchAlsoMatchesTheNameTheUserGaveTheItem() throws {
+    let (repo, dir) = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let id = try repo.insert(textItem("x-api-key: 0f3a"), source: nil, now: t0)
+    try repo.insert(textItem("unrelated"), source: nil, now: t0)
+    try repo.dbQueue.write { db in
+        try db.execute(sql: "UPDATE item SET label = ? WHERE id = ?",
+                       arguments: ["Claude session about GRDB", id])
+    }
+
+    for query in ["GRDB", "Claude", "session"] {
+        #expect(try repo.search(text: query, sourceBundleId: nil, tagId: nil, limit: 50)
+            .map(\.id) == [id])
+    }
+    // The content still matches on its own.
+    #expect(try repo.search(text: "x-api-key", sourceBundleId: nil, tagId: nil, limit: 50)
+        .map(\.id) == [id])
+}
+
 @Test func sourceAndTagFiltersCombineWithAnd() throws {
     let (repo, dir) = try makeRepo()
     defer { try? FileManager.default.removeItem(at: dir) }

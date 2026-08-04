@@ -10,6 +10,9 @@ struct ClipItem: Codable, Identifiable, Equatable, Hashable {
     var kind: ClipKind
     /// Content for `.text`; human-readable name for `.image` and `.file`.
     var text: String?
+    /// The name the user gave this clipping. Read and displayed here; Task 12c
+    /// is what writes it.
+    var label: String?
     /// Path relative to the blob directory, `.image` only.
     var blobPath: String?
     /// Original absolute path, `.file` only. We never copy the file.
@@ -31,6 +34,7 @@ extension ClipItem: FetchableRecord, MutablePersistableRecord {
         static let id = Column("id")
         static let kind = Column("kind")
         static let text = Column("text")
+        static let label = Column("label")
         static let sourceBundleId = Column("sourceBundleId")
         static let sourceName = Column("sourceName")
         static let contentHash = Column("contentHash")

@@ -113,13 +113,38 @@ struct ItemCard: View {
         }
     }
 
+    private var label: String? {
+        guard let label = item.label, !label.isEmpty else { return nil }
+        return label
+    }
+
     private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let label { nameLine(label) }
             preview
             if !tags.isEmpty { tagRow }
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// The name the user gave this clipping, in the content region rather than
+    /// the header: the header answers "where did this come from", and a name is
+    /// not provenance — it is what the thing *is*, so it belongs on top of the
+    /// thing.
+    ///
+    /// Set in the proportional system face, deliberately, against the
+    /// monospaced preview directly below it. Everything else on the card is
+    /// machine text; this is the one line a human wrote, and the change of
+    /// typeface says so before a word of it is read. That is the whole
+    /// treatment — no colour, no capsule, no icon. The header wash and the
+    /// syntax highlighting already spend the card's colour budget, and a third
+    /// loud region on 190 points would cost more than it bought.
+    private func nameLine(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -133,7 +158,11 @@ struct ItemCard: View {
             Text(SyntaxHighlighter.highlight(item.text ?? "",
                                              as: SyntaxHighlighter.detect(item.text ?? "")))
                 .font(.system(.subheadline, design: .monospaced))
-                .lineLimit(10)
+                // The name takes its line out of the preview, not out of the
+                // tag row: the card is a fixed 250pt and something has to give.
+                // Losing the tenth line of a snippet costs less than losing the
+                // tags, which are the whole reason the card was named.
+                .lineLimit(label == nil ? 10 : 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         case .image:
             if let path = item.blobPath,

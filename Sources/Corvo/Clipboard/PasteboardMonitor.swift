@@ -11,6 +11,7 @@ final class PasteboardMonitor {
     private let pasteboard: PasteboardReading
     private let repo: ItemRepository
     private let tracker: SourceTracker
+    private let autoTagger: AutoTagger
     let prefs: Preferences
 
     private var lastChangeCount: Int
@@ -21,6 +22,7 @@ final class PasteboardMonitor {
         self.pasteboard = pasteboard
         self.repo = repo
         self.tracker = tracker
+        self.autoTagger = AutoTagger(repo: repo)
         self.prefs = prefs
         self.lastChangeCount = pasteboard.changeCount
     }
@@ -78,7 +80,21 @@ final class PasteboardMonitor {
             .contains(where: prefs.blocklist.contains) { return }
 
         guard let captured = capture(types: types) else { return }
-        try repo.insert(captured, source: source, now: now)
+        let id = try repo.insert(captured, source: source, now: now)
+
+        // Last, and on purpose: every guard above decides whether this content
+        // may exist at all, and rules only ever see what survived them.
+        //
+        // The item is already stored by this point, so a rule that fails must
+        // not take the capture down with it — same reasoning as the catch in
+        // `start()`. Losing a tag is an annoyance; losing the clipping is the
+        // one thing this app exists to prevent.
+        do {
+            try autoTagger.apply(toItem: id, text: captured.text,
+                                 sourceBundleId: source?.bundleId)
+        } catch {
+            NSLog("Corvo: auto-tagging failed: \(error)")
+        }
     }
 
     private func capture(types: Set<NSPasteboard.PasteboardType>) -> CapturedItem? {

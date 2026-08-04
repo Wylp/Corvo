@@ -30,7 +30,10 @@ enum AppDatabase {
         supportDirectory.appendingPathComponent("corvo.sqlite")
     }
 
-    private static var migrator: DatabaseMigrator {
+    /// Not private so that `AppDatabaseTests` can stop at `"v1"` and migrate
+    /// forward from there. The only way to prove the upgrade preserves rows is
+    /// to build a v1 database on purpose.
+    static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
         migrator.registerMigration("v1") { db in
@@ -71,6 +74,21 @@ enum AppDatabase {
                 t.column("tagId", .integer).notNull()
                     .references("tag", onDelete: .cascade)
                 t.primaryKey(["itemId", "tagId"])
+            }
+        }
+
+        // "v1" above is frozen. It has already run against the database in the
+        // user's Application Support directory, so editing it would not re-run
+        // anything — it would only make tomorrow's fresh install disagree with
+        // today's. Schema changes are new migrations, always.
+        migrator.registerMigration("v2") { db in
+            try db.alter(table: "tag") { t in
+                t.add(column: "pattern", .text)
+                t.add(column: "sourceBundleId", .text)
+                t.add(column: "promptsForName", .boolean).notNull().defaults(to: false)
+            }
+            try db.alter(table: "item") { t in
+                t.add(column: "label", .text)
             }
         }
 
