@@ -43,6 +43,7 @@ final class PanelController {
     /// the same 8pt rhythm as the rest of the UI, and wide enough that the
     /// panel's shadow reads as a gap rather than as the panel resting on the Dock.
     private static let bottomInset: CGFloat = 24
+    private static let widthFraction: CGFloat = 0.85
 
     func show() {
         anchorToBottom()
@@ -59,9 +60,14 @@ final class PanelController {
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) })
                 ?? NSScreen.main else { return }
         let area = screen.visibleFrame
-        let size = panel.frame.size
-        panel.setFrameOrigin(NSPoint(x: area.midX - size.width / 2,
-                                     y: area.minY + Self.bottomInset))
+        // The panel is sized per screen rather than fixed: a card carousel is
+        // only as useful as the number of cards it can show at once.
+        let width = (area.width * Self.widthFraction).rounded()
+        let height = panel.frame.height
+        panel.setFrame(NSRect(x: area.midX - width / 2,
+                              y: area.minY + Self.bottomInset,
+                              width: width, height: height),
+                       display: true)
     }
 
     func hide() { panel.orderOut(nil) }
