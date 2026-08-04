@@ -1,0 +1,57 @@
+import Foundation
+import GRDB
+
+struct RetentionPolicy: Equatable {
+    var maxItems: Int
+    var maxAge: TimeInterval
+
+    static let padrao = RetentionPolicy(maxItems: 1000, maxAge: 30 * 24 * 3600)
+}
+
+/// Poda o histórico. Item fixado ou com ao menos uma tag é protegido: nunca
+/// expira e não conta para o teto de quantidade.
+struct Retention {
+    private let repo: ItemRepository
+    private let blobs: BlobStore
+
+    init(repo: ItemRepository, blobs: BlobStore) {
+        self.repo = repo
+        self.blobs = blobs
+    }
+
+    @discardableResult
+    func prune(policy: RetentionPolicy, now: Date) throws -> Int {
+        let protegidos = """
+            item.pinned = 1
+            OR EXISTS (SELECT 1 FROM itemTag WHERE itemTag.itemId = item.id)
+            """
+
+        let removidos = try repo.dbQueue.write { db -> Int in
+            var total = 0
+
+            if policy.maxAge.isFinite {
+                let corte = now.addingTimeInterval(-policy.maxAge)
+                try db.execute(sql: """
+                    DELETE FROM item
+                    WHERE createdAt < ? AND NOT (\(protegidos))
+                    """, arguments: [corte])
+                total += db.changesCount
+            }
+
+            try db.execute(sql: """
+                DELETE FROM item WHERE id IN (
+                    SELECT id FROM item
+                    WHERE NOT (\(protegidos))
+                    ORDER BY createdAt DESC
+                    LIMIT -1 OFFSET ?
+                )
+                """, arguments: [policy.maxItems])
+            total += db.changesCount
+
+            return total
+        }
+
+        try blobs.collectGarbage(keeping: repo.liveBlobPaths())
+        return removidos
+    }
+}
