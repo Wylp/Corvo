@@ -42,7 +42,8 @@ final class SourceTracker {
 
     func startObservingSystem() {
         let ws = NSWorkspace.shared
-        if let app = ws.frontmostApplication, let source = Self.source(of: app) {
+        if let app = Self.seedApp(ws), let source = Self.source(of: app) {
+            focusedApp = app
             recordActivation(source, at: Date())
         }
         ws.notificationCenter.addObserver(
@@ -66,5 +67,21 @@ final class SourceTracker {
         guard let bundleId = app.bundleIdentifier,
               bundleId != Bundle.main.bundleIdentifier else { return nil }
         return ItemSource(bundleId: bundleId, name: app.localizedName ?? bundleId)
+    }
+
+    private nonisolated static let loginWindowBundleId = "com.apple.loginwindow"
+
+    /// `frontmostApplication` reports `loginwindow` while the screen is locked — a
+    /// normal state for a login-item agent that starts before the user unlocks.
+    /// `menuBarOwningApplication` still names the app the user was really in.
+    private static func seedApp(_ ws: NSWorkspace) -> NSRunningApplication? {
+        guard let front = ws.frontmostApplication else { return ws.menuBarOwningApplication }
+        guard isUsableSeed(front.bundleIdentifier) else { return ws.menuBarOwningApplication }
+        return front
+    }
+
+    nonisolated static func isUsableSeed(_ bundleId: String?) -> Bool {
+        guard let bundleId else { return false }
+        return bundleId != loginWindowBundleId
     }
 }

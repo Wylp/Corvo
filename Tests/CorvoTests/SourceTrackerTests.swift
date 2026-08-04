@@ -38,3 +38,15 @@ private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
 
     #expect(tracker.captureSource(at: t0.addingTimeInterval(0.1)) == slack)
 }
+
+@Test func aNilBundleIdIsNotAUsableSeed() {
+    #expect(SourceTracker.isUsableSeed(nil) == false)
+}
+
+@Test func theLoginWindowIsNotAUsableSeed() {
+    #expect(SourceTracker.isUsableSeed("com.apple.loginwindow") == false)
+}
+
+@Test func anyOtherBundleIdIsAUsableSeed() {
+    #expect(SourceTracker.isUsableSeed("com.tinyspeck.slackmacgap") == true)
+}

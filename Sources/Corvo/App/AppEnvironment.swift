@@ -9,7 +9,7 @@ final class AppEnvironment {
     let repo: ItemRepository
     let tracker: SourceTracker
     let retention: Retention
-    private(set) var monitor: PasteboardMonitor!
+    let monitor: PasteboardMonitor
     private var pruneTimer: Timer?
 
     init() throws {
@@ -37,7 +37,15 @@ final class AppEnvironment {
 
     /// Named `runPrune`, not `prune`: `Retention.prune` is the method this one
     /// calls, and two `prune`s one line apart read like a recursion bug.
+    ///
+    /// ponytail: runs on the main thread (DB write + blob directory scan) on
+    /// launch and hourly. Fine up to the 1000-item retention ceiling; move to
+    /// a background queue if that ceiling ever grows.
     private func runPrune() {
-        try? retention.prune(policy: prefs.retentionPolicy, now: Date())
+        do {
+            try retention.prune(policy: prefs.retentionPolicy, now: Date())
+        } catch {
+            NSLog("Corvo: prune failed: \(error)")
+        }
     }
 }
