@@ -20,7 +20,10 @@ enum AppIcon {
         let icon = NSWorkspace.shared
             .urlForApplication(withBundleIdentifier: bundleId)
             .map { NSWorkspace.shared.icon(forFile: $0.path) }
-        cache[bundleId] = icon
+        // updateValue, not `cache[bundleId] = icon`: on a dictionary of optionals
+        // the subscript treats a nil value as "remove this key", so the miss the
+        // comment above promises to store would never be stored.
+        cache.updateValue(icon, forKey: bundleId)
         return icon
     }
 }
