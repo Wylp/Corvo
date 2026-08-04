@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel?.hide()
         model?.markUsed(item)
         let pasted = Paster.paste(item, blobs: env.blobs, into: env.tracker.focusedApp)
+        env.monitor.ignoreCurrentContents()
         guard !pasted else { return }
         warnMissingPermission()
     }

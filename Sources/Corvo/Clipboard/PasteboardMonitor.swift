@@ -48,6 +48,14 @@ final class PasteboardMonitor {
         timer = nil
     }
 
+    /// Corvo just wrote to the pasteboard itself; do not capture that write.
+    /// Text would merely dedupe, but an image goes back out as TIFF and
+    /// re-encodes to a PNG whose bytes differ from the stored blob — a fresh
+    /// hash, a new row and a new blob on every single paste.
+    func ignoreCurrentContents() {
+        lastChangeCount = pasteboard.changeCount
+    }
+
     func poll(now: Date) throws {
         let current = pasteboard.changeCount
         guard current != lastChangeCount else { return }
