@@ -55,9 +55,13 @@ final class PasteboardMonitor {
 
         let declarada = pasteboard.string(forType: Self.sourceType)
             .map { ItemSource(bundleId: $0, name: $0) }
-        let fonte = declarada ?? tracker.fonteDaCaptura(at: now)
+        let inferida = tracker.fonteDaCaptura(at: now)
+        let fonte = declarada ?? inferida
 
-        if let bundleId = fonte?.bundleId, prefs.blocklist.contains(bundleId) { return }
+        // A blocklist confere as DUAS identidades: um app que declare um id que
+        // não é o seu não pode contornar o bloqueio que o usuário configurou.
+        if [declarada?.bundleId, inferida?.bundleId].compactMap({ $0 })
+            .contains(where: prefs.blocklist.contains) { return }
 
         guard let capturado = capturar(tipos: tipos) else { return }
         try repo.insert(capturado, source: fonte, now: now)
@@ -66,6 +70,9 @@ final class PasteboardMonitor {
     private func capturar(tipos: Set<NSPasteboard.PasteboardType>) -> CapturedItem? {
         let url = pasteboard.string(forType: .URL)
 
+        // ponytail: só o primeiro arquivo de uma cópia múltipla é capturado; os
+        // demais são descartados em silêncio. Upgrade: um CapturedItem por
+        // arquivo, ou serializar a lista, se cópia múltipla virar caso comum.
         let arquivos = pasteboard.fileURLs()
         if let arquivo = arquivos.first {
             return CapturedItem(kind: .file, text: arquivo.lastPathComponent,

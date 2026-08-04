@@ -15,7 +15,9 @@ protocol PasteboardReading: AnyObject {
 
 extension NSPasteboard: PasteboardReading {
     var tipos: [NSPasteboard.PasteboardType] {
-        pasteboardItems?.first?.types ?? []
+        // flatMap, não first: a guarda de sigilo precisa enxergar o marcador em
+        // qualquer item, já que string(forType:) lê o pasteboard inteiro.
+        pasteboardItems?.flatMap(\.types) ?? []
     }
 
     func fileURLs() -> [URL] {

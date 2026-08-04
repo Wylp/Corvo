@@ -24,7 +24,7 @@ final class Preferences {
     var maxAgeDias: Int {
         get {
             let v = defaults.integer(forKey: "maxAgeDias")
-            return v > 0 ? v : 30
+            return v > 0 ? v : Int(RetentionPolicy.padrao.maxAge / 86400)
         }
         set { defaults.set(newValue, forKey: "maxAgeDias") }
     }
