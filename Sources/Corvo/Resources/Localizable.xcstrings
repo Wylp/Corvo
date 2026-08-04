@@ -10,12 +10,18 @@
     "Close": {
       "comment": "Key-hint label for esc, which closes the panel."
     },
+    "Copied, but not pasted": {
+      "comment": "Alert title after Enter when Accessibility permission is missing: the item was copied but not pasted."
+    },
     "Copy something and come back.": {
       "comment": "Empty-history hint under the 'Nothing here yet' title."
     },
     "Corvo": {
       "comment": "App name. Never translated.",
       "shouldTranslate": false
+    },
+    "Corvo needs Accessibility permission to paste straight into the app you were using. The content is already on your clipboard — paste it with ⌘V.": {
+      "comment": "Alert body for the missing-permission case. Must make clear the content was not lost — it is already on the clipboard."
     },
     "Delete": {
       "comment": "Key-hint label for the delete key, which removes the selected item."
@@ -29,8 +35,14 @@
     "No matches": {
       "comment": "Title shown when the search finds nothing."
     },
+    "Not now": {
+      "comment": "Alert button that dismisses the missing-permission alert without opening Settings."
+    },
     "Nothing here yet": {
       "comment": "Title shown when the history is empty."
+    },
+    "Open Settings": {
+      "comment": "Alert button that opens System Settings at the Accessibility panel."
     },
     "Paste": {
       "comment": "Key-hint label for return, which pastes the selected item."

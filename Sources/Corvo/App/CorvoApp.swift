@@ -51,10 +51,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Order matters: the panel has to be out of the way before the previous app
+    /// is reactivated, or the ⌘V is delivered to the window that is going away.
     private func paste(_ item: ClipItem) {
+        guard let env else { return }
         panel?.hide()
         model?.markUsed(item)
-        // Task 12 replaces this line with the real paste.
-        NSLog("Corvo: paste item \(item.id ?? -1)")
+        let pasted = Paster.paste(item, blobs: env.blobs, into: env.tracker.focusedApp)
+        guard !pasted else { return }
+        warnMissingPermission()
+    }
+
+    /// `NSAlert` takes plain strings, not `LocalizedStringKey`, so these have to
+    /// go through `String(localized:)` to reach the String Catalog at all.
+    private func warnMissingPermission() {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Copied, but not pasted")
+        alert.informativeText = String(localized: """
+            Corvo needs Accessibility permission to paste straight into the app \
+            you were using. The content is already on your clipboard — paste it \
+            with ⌘V.
+            """)
+        alert.addButton(withTitle: String(localized: "Open Settings"))
+        alert.addButton(withTitle: String(localized: "Not now"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Paster.openAccessibilitySettings()
     }
 }
