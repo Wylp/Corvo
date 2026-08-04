@@ -84,3 +84,82 @@ private func texto(_ s: String) -> CapturedItem {
 
     #expect(!FileManager.default.fileExists(atPath: blobs.url(for: "velha.png").path))
 }
+
+private func conteudos(_ repo: ItemRepository) throws -> Set<String> {
+    Set(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 500)
+        .compactMap(\.text))
+}
+
+/// A cláusula de proteção aparece em DOIS DELETEs separados. `fixadosEItensComTagNuncaExpiram`
+/// só exercita o caminho de idade, e `podaPorQuantidadeNaoContaProtegidos` só usa item
+/// fixado — nada cobria tag no caminho de quantidade. Faltar o EXISTS ali apagaria em
+/// silêncio itens que o usuário marcou para guardar.
+@Test func tagProtegeTambemNaPodaPorQuantidade() throws {
+    let (repo, _, retencao, dir) = try ambiente()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for i in 0..<5 {
+        let id = try repo.insert(texto("comtag\(i)"), source: nil,
+                                 now: agora.addingTimeInterval(Double(i)))
+        try repo.addTag(named: "guardar", to: id)
+    }
+    for i in 0..<3 {
+        try repo.insert(texto("sotag\(i)"), source: nil,
+                        now: agora.addingTimeInterval(Double(100 + i)))
+    }
+
+    let removidos = try retencao.prune(
+        policy: RetentionPolicy(maxItems: 2, maxAge: .greatestFiniteMagnitude),
+        now: agora.addingTimeInterval(1000))
+
+    #expect(removidos == 1)
+    #expect(try conteudos(repo) == ["comtag0", "comtag1", "comtag2", "comtag3",
+                                    "comtag4", "sotag1", "sotag2"])
+}
+
+/// `LIMIT -1 OFFSET ?` pula os N mais novos e apaga o resto. Trocar por `LIMIT ?`
+/// inverteria o comportamento mantendo a MESMA contagem de sobreviventes — por isso
+/// este teste confere quais itens sobraram por conteúdo, não pelo total.
+@Test func podaPorQuantidadeApagaOsMaisAntigosNaoOsMaisNovos() throws {
+    let (repo, _, retencao, dir) = try ambiente()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for i in 0..<5 {
+        try repo.insert(texto("i\(i)"), source: nil,
+                        now: agora.addingTimeInterval(Double(i)))
+    }
+
+    let removidos = try retencao.prune(
+        policy: RetentionPolicy(maxItems: 2, maxAge: .greatestFiniteMagnitude),
+        now: agora.addingTimeInterval(1000))
+
+    #expect(removidos == 3)
+    #expect(try conteudos(repo) == ["i3", "i4"])
+}
+
+/// As duas políticas mordendo ao mesmo tempo: a contagem devolvida não pode somar
+/// o mesmo item nos dois DELETEs.
+@Test func idadeEQuantidadePodamJuntasSemContarDuasVezes() throws {
+    let (repo, _, retencao, dir) = try ambiente()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let hoje = agora.addingTimeInterval(1000)
+    try repo.insert(texto("velho0"), source: nil, now: hoje.addingTimeInterval(-40 * 86400))
+    try repo.insert(texto("velho1"), source: nil, now: hoje.addingTimeInterval(-35 * 86400))
+    for i in 0..<4 {
+        try repo.insert(texto("novo\(i)"), source: nil,
+                        now: hoje.addingTimeInterval(Double(i) - 100))
+    }
+    let protegido = try repo.insert(texto("velhoComTag"), source: nil,
+                                    now: hoje.addingTimeInterval(-50 * 86400))
+    try repo.addTag(named: "guardar", to: protegido)
+
+    let antes = try conteudos(repo).count
+    let removidos = try retencao.prune(
+        policy: RetentionPolicy(maxItems: 2, maxAge: 30 * 86400), now: hoje)
+    let depois = try conteudos(repo)
+
+    #expect(removidos == antes - depois.count)
+    #expect(removidos == 4)
+    #expect(depois == ["velhoComTag", "novo2", "novo3"])
+}
