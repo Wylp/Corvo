@@ -21,6 +21,24 @@ final class FakePasteboard: PasteboardReading, @unchecked Sendable {
         dataByType = [:]
         urls = []
     }
+
+    /// `PasteboardMonitor.toPNG` hands back the bytes it was given when they do
+    /// not decode, so a stand-in header is enough to drive a `.image` capture.
+    func copyImage(_ data: Data = Data([0x89, 0x50, 0x4E, 0x47])) {
+        changeCount += 1
+        availableTypes = [.png]
+        stringsByType = [:]
+        dataByType = [.png: data]
+        urls = []
+    }
+
+    func copyFile(_ path: String) {
+        changeCount += 1
+        availableTypes = [.fileURL]
+        stringsByType = [:]
+        dataByType = [:]
+        urls = [URL(fileURLWithPath: path)]
+    }
 }
 
 @MainActor

@@ -28,19 +28,22 @@ struct FilterSidebar: View {
                     }
                 }
 
-                if !model.tags.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        sectionTitle("Tags")
-                        ForEach(model.tags) { tag in
-                            FilterRow(isOn: model.selectedTag == tag.id) {
-                                model.selectedTag = model.selectedTag == tag.id ? nil : tag.id
-                            } label: {
-                                Image(systemName: "tag.fill")
-                                    .frame(width: 16)
-                                    .foregroundStyle(.secondary)
-                                Text(tag.name).lineLimit(1)
-                                Spacer(minLength: 0)
-                            }
+                // Unlike Sources, this section stays put when it is empty: it
+                // carries the only way into the tag manager, and a user with no
+                // tags yet is exactly who needs to find it.
+                VStack(alignment: .leading, spacing: 2) {
+                    tagsHeader
+                    ForEach(model.tags) { tag in
+                        FilterRow(isOn: model.selectedTag == tag.id) {
+                            model.selectedTag = model.selectedTag == tag.id ? nil : tag.id
+                        } label: {
+                            // The glyph carries the rule, the colour carries the
+                            // tag's own colour — neither depends on the other.
+                            Image(systemName: tag.rule.isActive ? "bolt.fill" : "tag.fill")
+                                .frame(width: 16)
+                                .foregroundStyle(TagColor.named(tag.color)?.color ?? .secondary)
+                            Text(tag.name).lineLimit(1)
+                            Spacer(minLength: 0)
                         }
                     }
                 }
@@ -50,6 +53,25 @@ struct FilterSidebar: View {
         }
         .scrollIndicators(.never)
         .frame(width: 190)
+    }
+
+    private var tagsHeader: some View {
+        HStack(spacing: 4) {
+            sectionTitle("Tags")
+            Spacer(minLength: 0)
+            Button { model.isManagingTags = true } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.caption)
+                    .frame(width: 18, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Edit tags and rules (⌘⇧T)")
+            .accessibilityLabel("Edit tags and rules")
+            .padding(.trailing, 6)
+            .padding(.bottom, 3)
+        }
     }
 
     private func sectionTitle(_ key: LocalizedStringKey) -> some View {

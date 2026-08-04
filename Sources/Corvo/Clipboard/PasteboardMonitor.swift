@@ -90,7 +90,7 @@ final class PasteboardMonitor {
         // `start()`. Losing a tag is an annoyance; losing the clipping is the
         // one thing this app exists to prevent.
         do {
-            try autoTagger.apply(toItem: id, text: captured.text,
+            try autoTagger.apply(toItem: id, kind: captured.kind, text: captured.text,
                                  sourceBundleId: source?.bundleId)
         } catch {
             NSLog("Corvo: auto-tagging failed: \(error)")

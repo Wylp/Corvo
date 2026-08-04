@@ -6,11 +6,15 @@ import Observation
 @MainActor
 final class HistoryModel {
     private let repo: ItemRepository
+    private let tagger: AutoTagger
     private var observationCancellable: AnyDatabaseCancellable?
 
     var query: String = "" { didSet { reload() } }
     var selectedSource: String? { didSet { reload() } }
     var selectedTag: Int64? { didSet { reload() } }
+    /// Drives the tag manager sheet. Lives on the model rather than in a view so
+    /// that the sidebar's button and the panel's ⌘⇧T open the same thing.
+    var isManagingTags = false
 
     private(set) var items: [ClipItem] = []
     private(set) var sources: [SourceSummary] = []
@@ -23,6 +27,7 @@ final class HistoryModel {
 
     init(repo: ItemRepository) {
         self.repo = repo
+        self.tagger = AutoTagger(repo: repo)
         reload()
     }
 
@@ -62,6 +67,45 @@ final class HistoryModel {
         guard let id = item.id else { return }
         try? repo.addTag(named: name, to: id)
         reload()
+    }
+
+    // MARK: - Tag management
+
+    /// `nil` when the write failed. The caller uses the answer to keep the row
+    /// selected, since a create only learns its id here.
+    @discardableResult
+    func saveTag(_ tag: Tag) -> Tag? {
+        let saved = try? repo.saveTag(tag)
+        reload()
+        return saved
+    }
+
+    func deleteTag(_ tag: Tag) {
+        guard let id = tag.id else { return }
+        try? repo.deleteTag(id)
+        // The sidebar may be filtering by the tag that just stopped existing.
+        // Assigning triggers `reload()` on its own.
+        guard selectedTag != id else { return selectedTag = nil }
+        reload()
+    }
+
+    func itemCount(forTag tag: Tag) -> Int {
+        guard let id = tag.id else { return 0 }
+        return (try? repo.itemCount(forTag: id)) ?? 0
+    }
+
+    /// What the rule would claim right now. The editor's preview and the count
+    /// the retroactive apply asks the user to confirm come from this one call,
+    /// so the number shown is the set that gets tagged.
+    func items(matching rule: TagRule) -> [ClipItem] {
+        (try? tagger.items(matching: rule)) ?? []
+    }
+
+    @discardableResult
+    func applyRuleToExistingItems(_ tag: Tag) -> Int {
+        let tagged = (try? tagger.applyToExistingItems(tag)) ?? 0
+        reload()
+        return tagged
     }
 
     func togglePinned(_ item: ClipItem) {

@@ -10,6 +10,9 @@ struct HistoryView: View {
     @Bindable var model: HistoryModel
     let blobs: BlobStore
     let onPaste: (ClipItem) -> Void
+    /// ⌘C: put the clipping on the clipboard and stop there. The other half of
+    /// ⏎, for pasting somewhere Corvo cannot reach or at a moment it cannot pick.
+    let onCopy: (ClipItem) -> Void
 
     @State private var isEditingTag = false
     @State private var tagText = ""
@@ -25,6 +28,9 @@ struct HistoryView: View {
                 Divider()
                 carousel
             }
+            // On the split rather than the root: a second `.sheet` on the same
+            // view silently replaces the first one below.
+            .sheet(isPresented: $model.isManagingTags) { TagManagerView(model: model) }
             Divider()
             shortcutRail
         }
@@ -94,35 +100,22 @@ struct HistoryView: View {
         }
     }
 
+    /// ⏎ and ⌘C sit together at the head of the rail because they are the two
+    /// ways out with the clipping: one lands it in the app you came from, the
+    /// other just hands it to you.
     private var shortcutRail: some View {
         HStack(spacing: 14) {
-            hint("⏎", "Paste")
-            hint("⌘P", "Pin")
-            hint("⌘T", "Tag")
-            hint("⌘⌫", "Delete")
+            KeycapHint(key: "⏎", label: "Paste")
+            KeycapHint(key: "⌘C", label: "Copy")
+            KeycapHint(key: "⌘P", label: "Pin")
+            KeycapHint(key: "⌘T", label: "Tag")
+            KeycapHint(key: "⌘⇧T", label: "Edit tags")
+            KeycapHint(key: "⌘⌫", label: "Delete")
             Spacer(minLength: 8)
-            hint("esc", "Close")
+            KeycapHint(key: "esc", label: "Close")
         }
         .padding(.horizontal, 16)
         .frame(height: 30)
-    }
-
-    private func hint(_ key: LocalizedStringKey, _ label: LocalizedStringKey) -> some View {
-        HStack(spacing: 5) {
-            Text(key)
-                .font(.system(size: 10, weight: .medium))
-                .frame(minWidth: 18, minHeight: 15)
-                .padding(.horizontal, 3)
-                .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 4))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Color.primary.opacity(0.12))
-                }
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
     }
 
     /// Invisible buttons are how SwiftUI registers a shortcut with no menu item.
@@ -134,6 +127,13 @@ struct HistoryView: View {
             shortcutButton(.leftArrow) { model.move(-1) }
             shortcutButton(.rightArrow) { model.move(1) }
             shortcutButton(.return) { pasteSelected() }
+            // Wins over the search field's own ⌘C: a shortcut registered on the
+            // window's views is consulted before the menu item the field relies
+            // on. Copying a card is what the panel is open for; copying the
+            // query back out of the search box is not.
+            shortcutButton("c", modifiers: .command) {
+                if let item = model.selectedItem { onCopy(item) }
+            }
             // ⌘⌫, not a bare ⌫: the search field holds focus while the panel is
             // open, so an unmodified Delete either steals backspace from the
             // field — destroying a clipping with no undo — or never fires at
@@ -145,6 +145,7 @@ struct HistoryView: View {
                 if let item = model.selectedItem { model.togglePinned(item) }
             }
             shortcutButton("t", modifiers: .command) { tagText = ""; isEditingTag = true }
+            shortcutButton("t", modifiers: [.command, .shift]) { model.isManagingTags = true }
         }
         .opacity(0)
         .frame(width: 0, height: 0)

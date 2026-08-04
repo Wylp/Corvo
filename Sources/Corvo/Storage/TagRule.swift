@@ -53,6 +53,11 @@ struct TagRule: Equatable {
     /// unbounded.
     nonisolated(unsafe) private static let cache = NSCache<NSString, NSRegularExpression>()
 
+    /// Whether a pattern the user is typing would compile. The same call the
+    /// matcher makes, so the editor can never accept a pattern the poller would
+    /// go on to drop in silence.
+    static func isValid(pattern: String) -> Bool { regex(for: pattern) != nil }
+
     private static func regex(for pattern: String) -> NSRegularExpression? {
         if let cached = cache.object(forKey: pattern as NSString) { return cached }
         guard let compiled = try? NSRegularExpression(pattern: pattern) else { return nil }

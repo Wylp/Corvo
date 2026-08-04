@@ -42,7 +42,7 @@ private func insertItem(_ repo: ItemRepository, _ text: String,
     try insertTag(repo, name: "todo", pattern: "TODO")
     let id = try insertItem(repo, "a TODO in the middle")
 
-    try tagger.apply(toItem: id, text: "a TODO in the middle", sourceBundleId: nil)
+    try tagger.apply(toItem: id, kind: .text, text: "a TODO in the middle", sourceBundleId: nil)
     #expect(try repo.tags(forItem: id).map(\.name) == ["todo"])
 }
 
@@ -53,7 +53,7 @@ private func insertItem(_ repo: ItemRepository, _ text: String,
     try insertTag(repo, name: "todo", pattern: "TODO")
     let id = try insertItem(repo, "nothing here")
 
-    try tagger.apply(toItem: id, text: "nothing here", sourceBundleId: nil)
+    try tagger.apply(toItem: id, kind: .text, text: "nothing here", sourceBundleId: nil)
     #expect(try repo.tags(forItem: id).isEmpty)
 }
 
@@ -66,7 +66,7 @@ private func insertItem(_ repo: ItemRepository, _ text: String,
     try insertTag(repo, name: "manual")
     let id = try insertItem(repo, "anything at all")
 
-    try tagger.apply(toItem: id, text: "anything at all", sourceBundleId: nil)
+    try tagger.apply(toItem: id, kind: .text, text: "anything at all", sourceBundleId: nil)
     #expect(try repo.tags(forItem: id).isEmpty)
 }
 
@@ -83,7 +83,7 @@ private func insertItem(_ repo: ItemRepository, _ text: String,
     let figma = ItemSource(bundleId: "com.figma.Desktop", name: "Figma")
     let id = try insertItem(repo, "SELECT 1", source: figma)
 
-    try tagger.apply(toItem: id, text: "SELECT 1", sourceBundleId: figma.bundleId)
+    try tagger.apply(toItem: id, kind: .text, text: "SELECT 1", sourceBundleId: figma.bundleId)
     #expect(try repo.tags(forItem: id).map(\.name) == ["figma", "sql"])
 }
 
@@ -97,7 +97,7 @@ private func insertItem(_ repo: ItemRepository, _ text: String,
     try insertTag(repo, name: "zzz-works", pattern: "keep")
     let id = try insertItem(repo, "keep going")
 
-    try tagger.apply(toItem: id, text: "keep going", sourceBundleId: nil)
+    try tagger.apply(toItem: id, kind: .text, text: "keep going", sourceBundleId: nil)
     #expect(try repo.tags(forItem: id).map(\.name) == ["zzz-works"])
 }
 
@@ -111,14 +111,14 @@ private func insertItem(_ repo: ItemRepository, _ text: String,
     try insertTag(repo, name: "todo", pattern: "TODO")
     let id = try insertItem(repo, "TODO twice")
 
-    try tagger.apply(toItem: id, text: "TODO twice", sourceBundleId: nil)
-    try tagger.apply(toItem: id, text: "TODO twice", sourceBundleId: nil)
+    try tagger.apply(toItem: id, kind: .text, text: "TODO twice", sourceBundleId: nil)
+    try tagger.apply(toItem: id, kind: .text, text: "TODO twice", sourceBundleId: nil)
     #expect(try repo.tags(forItem: id).map(\.name) == ["todo"])
 }
 
 /// The return value is the prompting list, not the applied list: both tags are
-/// attached, only the one asking for a name comes back. Task 12c is what does
-/// the asking — nothing here notifies anyone.
+/// attached, only the one asking for a name comes back. Nothing here notifies
+/// anyone; the prompt the toggle implies does not exist yet.
 @MainActor @Test func returnsOnlyTheMatchedTagsThatAskForAName() throws {
     let (tagger, repo, dir) = try makeTagger()
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -127,7 +127,7 @@ private func insertItem(_ repo: ItemRepository, _ text: String,
     try insertTag(repo, name: "asks", pattern: "TODO", promptsForName: true)
     let id = try insertItem(repo, "TODO both")
 
-    let promptable = try tagger.apply(toItem: id, text: "TODO both", sourceBundleId: nil)
+    let promptable = try tagger.apply(toItem: id, kind: .text, text: "TODO both", sourceBundleId: nil)
     #expect(promptable.map(\.name) == ["asks"])
     #expect(try repo.tags(forItem: id).map(\.name) == ["asks", "quiet"])
 }
@@ -189,4 +189,107 @@ private func insertItem(_ repo: ItemRepository, _ text: String,
     let item = try #require(try repo.search(text: "", sourceBundleId: nil,
                                             tagId: nil, limit: 50).first)
     #expect(try repo.tags(forItem: item.id!).map(\.name) == ["safari", "sql"])
+}
+
+// MARK: - What a pattern is allowed to see
+
+/// Every capture carries text, and an image's is the internal label `"Image"`.
+/// Handed to a rule unfiltered, a tag patterned on `Image` — or `age`, or `.` —
+/// would claim every screenshot the user ever copies.
+@MainActor @Test func aPatternNeverMatchesAnImagesInternalLabel() throws {
+    let (tagger, repo, dir) = try makeTagger()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try insertTag(repo, name: "images", pattern: "Image")
+    let id = try repo.insert(
+        CapturedItem(kind: .image, text: "Image", imageData: Data([0x89, 0x50]),
+                     filePath: nil, url: nil, contentHash: "img"),
+        source: nil, now: t0)
+
+    try tagger.apply(toItem: id, kind: .image, text: "Image", sourceBundleId: nil)
+    #expect(try repo.tags(forItem: id).isEmpty)
+}
+
+/// The other half of the rule: an image is not unreachable, it is reachable only
+/// by a rule that asks about its source. "Everything from Figma" still works.
+@MainActor @Test func aSourceOnlyRuleStillTagsAnImage() throws {
+    let (tagger, repo, dir) = try makeTagger()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try insertTag(repo, name: "figma", sourceBundleId: "com.figma.Desktop")
+    let id = try repo.insert(
+        CapturedItem(kind: .image, text: "Image", imageData: Data([0x89, 0x50]),
+                     filePath: nil, url: nil, contentHash: "img"),
+        source: ItemSource(bundleId: "com.figma.Desktop", name: "Figma"), now: t0)
+
+    try tagger.apply(toItem: id, kind: .image, text: "Image",
+                     sourceBundleId: "com.figma.Desktop")
+    #expect(try repo.tags(forItem: id).map(\.name) == ["figma"])
+}
+
+/// A file's text is its own name, which is the legitimate use the image rule
+/// must not take away.
+@MainActor @Test func aPatternMatchesAFilesName() throws {
+    let (tagger, repo, dir) = try makeTagger()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try insertTag(repo, name: "keys", pattern: #"\.pem$"#)
+    let id = try repo.insert(
+        CapturedItem(kind: .file, text: "key.pem", imageData: nil,
+                     filePath: "/tmp/key.pem", url: nil, contentHash: "pem"),
+        source: nil, now: t0)
+
+    try tagger.apply(toItem: id, kind: .file, text: "key.pem", sourceBundleId: nil)
+    #expect(try repo.tags(forItem: id).map(\.name) == ["keys"])
+}
+
+// MARK: - The same guarantee, end to end
+
+@MainActor
+private func makeMonitor() throws -> (FakePasteboard, ItemRepository, PasteboardMonitor, URL) {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("corvo-autotag-mon-\(UUID().uuidString)")
+    let repo = ItemRepository(dbQueue: try AppDatabase.make(at: nil),
+                              blobs: BlobStore(directory: dir))
+    let pb = FakePasteboard()
+    let monitor = PasteboardMonitor(
+        pasteboard: pb, repo: repo, tracker: SourceTracker(),
+        prefs: Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+    return (pb, repo, monitor, dir)
+}
+
+/// The unit tests above prove `AutoTagger` filters; this proves `poll` hands it
+/// the kind so the filter is reached at all. Both rules are present at once, so
+/// the same capture answers both questions: the pattern must miss, the
+/// source-only rule must hit.
+@MainActor @Test func anImageCapturedThroughPollEscapesPatternRulesOnly() throws {
+    let (pb, repo, monitor, dir) = try makeMonitor()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try insertTag(repo, name: "everything", pattern: ".")
+    try insertTag(repo, name: "screens", sourceBundleId: "com.apple.screencapture")
+    pb.stringsByType[PasteboardMonitor.sourceType] = "com.apple.screencapture"
+    pb.copyImage()
+    pb.stringsByType[PasteboardMonitor.sourceType] = "com.apple.screencapture"
+    try monitor.poll(now: t0)
+
+    let item = try #require(try repo.search(text: "", sourceBundleId: nil,
+                                            tagId: nil, limit: 50).first)
+    #expect(item.kind == .image)
+    #expect(try repo.tags(forItem: item.id!).map(\.name) == ["screens"])
+}
+
+@MainActor @Test func aFileCapturedThroughPollIsMatchedOnItsName() throws {
+    let (pb, repo, monitor, dir) = try makeMonitor()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try insertTag(repo, name: "keys", pattern: #"\.pem$"#)
+    try insertTag(repo, name: "certs", pattern: #"\.crt$"#)
+    pb.copyFile("/tmp/corvo-test/key.pem")
+    try monitor.poll(now: t0)
+
+    let item = try #require(try repo.search(text: "", sourceBundleId: nil,
+                                            tagId: nil, limit: 50).first)
+    #expect(item.kind == .file)
+    #expect(try repo.tags(forItem: item.id!).map(\.name) == ["keys"])
 }

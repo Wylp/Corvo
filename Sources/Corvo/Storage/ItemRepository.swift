@@ -161,6 +161,73 @@ final class ItemRepository {
         }
     }
 
+    /// Creates the tag, or writes an existing one back in place.
+    ///
+    /// An update is an `UPDATE` on the tag row and never touches `itemTag`, so
+    /// changing a rule cannot cost the user the items they tagged by hand. That
+    /// is the whole reason there is no delete-then-insert path here.
+    ///
+    /// A new tag whose name already belongs to another folds into that row
+    /// rather than failing the unique index. The editor stops the case before it
+    /// arrives; this is what keeps the repository from throwing at a caller that
+    /// did not.
+    @discardableResult
+    func saveTag(_ tag: Tag) throws -> Tag {
+        var saved = tag
+        saved.name = tag.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.color = Self.nilIfBlank(tag.color)
+        // An emptied field has to store NULL, not "": `TagRule.isActive` reads
+        // any non-nil pattern as a rule, and the empty pattern matches every
+        // item there is. Not trimmed, unlike the name — trailing space is
+        // meaningful inside a regex.
+        saved.pattern = Self.nilIfEmpty(tag.pattern)
+        saved.sourceBundleId = Self.nilIfBlank(tag.sourceBundleId)
+
+        // Same silence as `addTag`: a nameless tag is not an error worth its own
+        // error type, it is a form the user has not finished filling in.
+        guard !saved.name.isEmpty else { return tag }
+
+        return try dbQueue.write { db in
+            if saved.id != nil {
+                try saved.update(db)
+                return saved
+            }
+            if let existing = try Tag.filter(Tag.Columns.name == saved.name).fetchOne(db) {
+                saved.id = existing.id
+                try saved.update(db)
+                return saved
+            }
+            try saved.insert(db)
+            return saved
+        }
+    }
+
+    /// The foreign key cascade drops the links. The items themselves stay — a
+    /// tag is a label on a clipping, never the clipping itself.
+    func deleteTag(_ id: Int64) throws {
+        try dbQueue.write { db in
+            _ = try Tag.deleteOne(db, key: id)
+        }
+    }
+
+    /// How many items carry the tag. Quoted in the delete confirmation, which is
+    /// the only warning the user gets before the cascade runs.
+    func itemCount(forTag id: Int64) throws -> Int {
+        try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM itemTag WHERE tagId = ?",
+                             arguments: [id]) ?? 0
+        }
+    }
+
+    private static func nilIfEmpty(_ s: String?) -> String? {
+        guard let s, !s.isEmpty else { return nil }
+        return s
+    }
+
+    private static func nilIfBlank(_ s: String?) -> String? {
+        nilIfEmpty(s?.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     func removeTag(_ tagId: Int64, from itemId: Int64) throws {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM itemTag WHERE itemId = ? AND tagId = ?",

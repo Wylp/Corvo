@@ -49,7 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel = PanelController(content: HistoryView(
                 model: model,
                 blobs: env.blobs,
-                onPaste: { [weak self] item in self?.paste(item) }
+                onPaste: { [weak self] item in self?.paste(item) },
+                onCopy: { [weak self] item in self?.copy(item) }
             ))
         } catch {
             NSAlert(error: error).runModal()
@@ -76,6 +77,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.monitor.ignoreCurrentContents()
         guard !pasted else { return }
         warnMissingPermission()
+    }
+
+    /// ⌘C: the clipping goes to the clipboard and nowhere else — no app is
+    /// reactivated and no ⌘V is posted, so the user places it themselves.
+    ///
+    /// `ignoreCurrentContents()` is not optional here, for the same reason it is
+    /// not optional in `paste(_:)`: without it the next poll captures our own
+    /// write. Text would merely dedupe, but an image goes back out as TIFF and
+    /// re-encodes to a PNG whose bytes differ from the stored blob — a fresh
+    /// hash, a new row and a new blob on every copy.
+    private func copy(_ item: ClipItem) {
+        guard let env else { return }
+        Paster.writeToClipboard(item, blobs: env.blobs)
+        panel?.hide()
+        model?.markUsed(item)
+        env.monitor.ignoreCurrentContents()
     }
 
     /// `NSAlert` takes plain strings, not `LocalizedStringKey`, so these have to
