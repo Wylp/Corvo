@@ -71,3 +71,31 @@ private func textItem(_ s: String) -> CapturedItem {
 
     #expect(model.sources.map(\.name) == ["Terminal"])
 }
+
+/// Both sidebar filters hang off `didSet` hooks. If one of them stops calling
+/// `reload()`, the sidebar stays clickable but does nothing and every other test
+/// still passes — so this is the only thing standing between us and a dead filter.
+@MainActor @Test func theSidebarFiltersActuallyNarrowTheList() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let warp = ItemSource(bundleId: "dev.warp.Warp-Stable", name: "Warp")
+    let safari = ItemSource(bundleId: "com.apple.Safari", name: "Safari")
+    let fromWarp = try repo.insert(textItem("a"), source: warp, now: t0)
+    try repo.insert(textItem("b"), source: warp, now: t0.addingTimeInterval(1))
+    try repo.insert(textItem("c"), source: safari, now: t0.addingTimeInterval(2))
+    try repo.addTag(named: "keep", to: fromWarp)
+    model.reload()
+
+    #expect(model.items.count == 3)
+
+    model.selectedSource = warp.bundleId
+    #expect(model.items.map(\.text) == ["b", "a"])
+
+    model.selectedSource = nil
+    #expect(model.items.count == 3)
+
+    let tagId = try #require(try repo.allTags().first?.id)
+    model.selectedTag = tagId
+    #expect(model.items.map(\.text) == ["a"])
+}
