@@ -20,6 +20,7 @@ struct CorvoApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var env: AppEnvironment?
     private(set) var panel: PanelController?
+    private(set) var model: HistoryModel?
     private var hotkey: GlobalHotkey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -27,8 +28,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let env = try AppEnvironment()
             env.start()
             self.env = env
-            panel = PanelController(content: Text("history goes here")
-                .frame(maxWidth: .infinity, maxHeight: .infinity))
+            let model = HistoryModel(repo: env.repo)
+            model.observeDatabase()
+            self.model = model
+            panel = PanelController(content: HistoryView(
+                model: model,
+                blobs: env.blobs,
+                onPaste: { [weak self] item in self?.paste(item) }
+            ))
         } catch {
             NSAlert(error: error).runModal()
             NSApp.terminate(nil)
@@ -42,5 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if hotkey == nil {
             NSLog("Corvo: could not register ⌘⇧V — shortcut already taken?")
         }
+    }
+
+    private func paste(_ item: ClipItem) {
+        panel?.hide()
+        model?.markUsed(item)
+        // Task 12 replaces this line with the real paste.
+        NSLog("Corvo: paste item \(item.id ?? -1)")
     }
 }

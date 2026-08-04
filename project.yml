@@ -37,6 +37,9 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
+        # Without this the compiler extracts no literals and the String Catalog
+        # never learns about them — the whole convention from task 10 is a no-op.
+        SWIFT_EMIT_LOC_STRINGS: YES
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
         GENERATE_INFOPLIST_FILE: NO
