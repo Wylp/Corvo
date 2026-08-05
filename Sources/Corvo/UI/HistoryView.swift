@@ -14,7 +14,6 @@ struct HistoryView: View {
     /// ⏎, for pasting somewhere Corvo cannot reach or at a moment it cannot pick.
     let onCopy: (ClipItem) -> Void
 
-    @State private var isEditingTag = false
     @State private var tagText = ""
     @FocusState private var isSearchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,9 +27,6 @@ struct HistoryView: View {
                 Divider()
                 carousel
             }
-            // On the split rather than the root: a second `.sheet` on the same
-            // view silently replaces the first one below.
-            .sheet(isPresented: $model.isManagingTags) { TagManagerView(model: model) }
             Divider()
             shortcutRail
         }
@@ -39,7 +35,14 @@ struct HistoryView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .background(shortcuts)
         .onAppear { isSearchFocused = true }
-        .sheet(isPresented: $isEditingTag) { tagSheet }
+        // One sheet on the root, switched by the model. Both of these used to be
+        // their own `.sheet` on their own view, one nested inside the other.
+        .sheet(item: $model.sheet) { sheet in
+            switch sheet {
+            case .tags: TagManagerView(model: model)
+            case .naming: tagSheet
+            }
+        }
     }
 
     private var searchField: some View {
@@ -144,8 +147,8 @@ struct HistoryView: View {
             shortcutButton("p", modifiers: .command) {
                 if let item = model.selectedItem { model.togglePinned(item) }
             }
-            shortcutButton("t", modifiers: .command) { tagText = ""; isEditingTag = true }
-            shortcutButton("t", modifiers: [.command, .shift]) { model.isManagingTags = true }
+            shortcutButton("t", modifiers: .command) { tagText = ""; model.sheet = .naming }
+            shortcutButton("t", modifiers: [.command, .shift]) { model.sheet = .tags }
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -165,7 +168,7 @@ struct HistoryView: View {
                 .onSubmit { confirmTag() }
             HStack {
                 Spacer()
-                Button("Cancel") { isEditingTag = false }
+                Button("Cancel") { model.sheet = nil }
                 Button("Add") { confirmTag() }.keyboardShortcut(.defaultAction)
             }
         }
@@ -177,7 +180,7 @@ struct HistoryView: View {
         if let item = model.selectedItem {
             model.addTag(tagText, to: item)
         }
-        isEditingTag = false
+        model.sheet = nil
     }
 
     private func pasteSelected() {

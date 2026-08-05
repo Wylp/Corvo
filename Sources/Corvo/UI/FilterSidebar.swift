@@ -59,7 +59,7 @@ struct FilterSidebar: View {
         HStack(spacing: 4) {
             sectionTitle("Tags")
             Spacer(minLength: 0)
-            Button { model.isManagingTags = true } label: {
+            Button { model.sheet = .tags } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption)
                     .frame(width: 18, height: 16)

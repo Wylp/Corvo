@@ -15,8 +15,18 @@ final class FloatingPanel: NSPanel {
 @MainActor
 final class PanelController {
     private let panel: FloatingPanel
+    private let clearTransientState: @MainActor () -> Void
+    /// `nonisolated(unsafe)` only so that `deinit` may read it: it is written
+    /// once, on the main actor, and read after the last reference is gone.
+    private nonisolated(unsafe) var deactivation: (any NSObjectProtocol)?
 
-    init(content: some View) {
+    /// - Parameter clearTransientState: run before every opening, and again
+    ///   whenever the app resigns active — which is the one moment the panel
+    ///   leaves the screen without a call of ours in it. Between the two, no
+    ///   sheet can survive a round trip: the panel is only ever on screen after
+    ///   `show()`, or after an activation that a deactivation came before.
+    init(content: some View, clearTransientState: @escaping @MainActor () -> Void = {}) {
+        self.clearTransientState = clearTransientState
         // Borderless: a quick-paste panel that hides on deactivate has no use for
         // close/minimise/zoom — Esc is the way out, and the key rail says so. The
         // window itself is transparent so the content's rounded corners show.
@@ -33,6 +43,28 @@ final class PanelController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.contentView = NSHostingView(rootView: content)
+
+        // `hidesOnDeactivate` takes the window off the screen with no call of
+        // ours anywhere in it, and AppKit puts it back when the app is activated
+        // again — also without asking us. Clearing on the way out is what stops
+        // that pair from restoring a sheet over a window that can no longer
+        // dismiss it.
+        //
+        // Not `didResignKey`, which is the tempting one: a sheet and the tag
+        // editor's open panel both take key away from this window while it is
+        // still very much on screen. Not KVO on `isVisible` either —
+        // `makeKeyAndOrderFront` posts true, false and true again, so "became
+        // invisible" cannot be told from "is opening".
+        deactivation = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { clearTransientState() }
+            }
+    }
+
+    deinit {
+        guard let deactivation else { return }
+        NotificationCenter.default.removeObserver(deactivation)
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -46,6 +78,9 @@ final class PanelController {
     private static let widthFraction: CGFloat = 0.85
 
     func show() {
+        // Before the window is on screen, not after: the panel opens on the
+        // history, never on whatever sheet was up when it was last put away.
+        clearTransientState()
         anchorToBottom()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)

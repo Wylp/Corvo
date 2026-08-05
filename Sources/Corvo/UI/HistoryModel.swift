@@ -12,9 +12,26 @@ final class HistoryModel {
     var query: String = "" { didSet { reload() } }
     var selectedSource: String? { didSet { reload() } }
     var selectedTag: Int64? { didSet { reload() } }
-    /// Drives the tag manager sheet. Lives on the model rather than in a view so
-    /// that the sidebar's button and the panel's ⌘⇧T open the same thing.
-    var isManagingTags = false
+    /// The one sheet the panel can have up, or `nil` for none. Lives on the
+    /// model rather than in a view so that the sidebar's button and the panel's
+    /// ⌘⇧T open the same thing — and so that hiding the panel can clear it.
+    ///
+    /// One optional rather than two booleans because SwiftUI gets one `.sheet`:
+    /// two of them on nested views is how this screen used to do it, and a
+    /// presentation nested inside another is how the dimming overlay gets stuck
+    /// on screen with nothing behind it left to dismiss it.
+    var sheet: PanelSheet?
+
+    /// `Identifiable` for `.sheet(item:)`, which is the modifier that takes the
+    /// whole state in one binding instead of one boolean per sheet.
+    enum PanelSheet: Identifiable {
+        /// The tag manager: names, colours and rules.
+        case tags
+        /// Naming a new tag for the selected clipping.
+        case naming
+
+        var id: Self { self }
+    }
 
     private(set) var items: [ClipItem] = []
     private(set) var sources: [SourceSummary] = []

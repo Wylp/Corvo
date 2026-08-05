@@ -58,12 +58,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let model = HistoryModel(repo: env.repo, prefs: env.prefs)
             model.observeDatabase()
             self.model = model
-            panel = PanelController(content: HistoryView(
-                model: model,
-                blobs: env.blobs,
-                onPaste: { [weak self] item in self?.paste(item) },
-                onCopy: { [weak self] item in self?.copy(item) }
-            ))
+            panel = PanelController(
+                content: HistoryView(
+                    model: model,
+                    blobs: env.blobs,
+                    onPaste: { [weak self] item in self?.paste(item) },
+                    onCopy: { [weak self] item in self?.copy(item) }
+                ),
+                // The panel is hidden, not destroyed, so nothing else would ever
+                // put the sheet away: it would be back on top the next time the
+                // panel opens, over a window that can no longer dismiss it.
+                clearTransientState: { [weak model] in model?.sheet = nil })
         } catch {
             NSAlert(error: error).runModal()
             NSApp.terminate(nil)
