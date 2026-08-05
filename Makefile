@@ -1,7 +1,13 @@
-.PHONY: gen build test run release clean
+.PHONY: gen build test run release icon clean
 
 gen:
 	xcodegen generate
+
+# Regenerates the ten icon sizes from Design/AppIcon.png. Only needed when the
+# artwork changes — the generated set is committed.
+icon:
+	swift Scripts/make-icon.swift Design/AppIcon.png \
+		Sources/Corvo/Resources/Assets.xcassets/AppIcon.appiconset
 
 build: gen
 	xcodebuild -project Corvo.xcodeproj -scheme Corvo -configuration Debug build
