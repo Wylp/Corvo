@@ -10,8 +10,8 @@ struct ClipItem: Codable, Identifiable, Equatable, Hashable {
     var kind: ClipKind
     /// Content for `.text`; human-readable name for `.image` and `.file`.
     var text: String?
-    /// The name the user gave this clipping. Read and displayed here; Task 12c
-    /// is what writes it.
+    /// The name the user gave this clipping, through the notification a rule
+    /// raised or ⌘R in the panel. Searched alongside the content.
     var label: String?
     /// Path relative to the blob directory, `.image` only.
     var blobPath: String?

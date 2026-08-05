@@ -77,6 +77,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 // put the sheet away: it would be back on top the next time the
                 // panel opens, over a window that can no longer dismiss it.
                 clearTransientState: { [weak model] in model?.sheet = nil })
+
+            // The answer typed into the notification comes back here. It goes
+            // through the model rather than the repository so the panel redraws
+            // with the new name if it happens to be open.
+            env.namePrompt.onName = { [weak model] itemId, name in
+                model?.setLabel(name, forItemId: itemId)
+            }
+            // The banner was clicked instead of answered. The clipping that
+            // raised it is the newest one, so it is the first card, and it says
+            // "Name this" until it has a name.
+            env.namePrompt.onOpen = { [weak self] in self?.panel?.show() }
         } catch {
             NSAlert(error: error).runModal()
             NSApp.terminate(nil)

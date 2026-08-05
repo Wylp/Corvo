@@ -106,9 +106,21 @@ struct ItemCard: View {
         return label
     }
 
+    /// A rule claimed this clipping for a tag that asks to name what it catches,
+    /// and no name has been given. Derived from what the card already holds —
+    /// no column, no extra query, and no state to keep in sync: it is true
+    /// whether the notification was never authorized, never seen, or dismissed,
+    /// and it stops being true the moment a name is saved.
+    private var awaitsName: Bool {
+        label == nil && tags.contains(where: \.promptsForName)
+    }
+
     private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Never both — `awaitsName` requires the absence of a label — so
+            // these are two conditions rather than a branch.
             if let label { nameLine(label) }
+            if awaitsName { namePrompt }
             preview
             if !tags.isEmpty { tagRow }
         }
@@ -135,6 +147,24 @@ struct ItemCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The name slot before there is a name, in the exact place the name will
+    /// go: the card does not reflow when the answer arrives, it just stops
+    /// asking.
+    ///
+    /// Deliberately quiet — secondary weight, no colour, no badge. Nothing is
+    /// wrong here. The clipping is saved and tagged; this is an invitation, and
+    /// a warning colour would say the opposite. Glyph and words carry it
+    /// together, so it survives with colour turned off, and the shortcut is
+    /// written into the line because a hint the user has to already know is not
+    /// a hint.
+    private var namePrompt: some View {
+        Label("Name this (⌘R)", systemImage: "pencil.line")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     @ViewBuilder
     private var preview: some View {
         switch item.kind {
@@ -150,7 +180,11 @@ struct ItemCard: View {
                 // tag row: the card is a fixed 250pt and something has to give.
                 // Losing the tenth line of a snippet costs less than losing the
                 // tags, which are the whole reason the card was named.
-                .lineLimit(label == nil ? 10 : 8)
+                //
+                // The invitation to name it costs the same line as the name
+                // itself, on purpose: answering the prompt must not shuffle the
+                // card it is printed on.
+                .lineLimit(label == nil && !awaitsName ? 10 : 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         case .image:
             if let path = item.blobPath,

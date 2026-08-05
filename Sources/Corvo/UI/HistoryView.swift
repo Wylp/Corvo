@@ -15,6 +15,7 @@ struct HistoryView: View {
     let onCopy: (ClipItem) -> Void
 
     @State private var tagText = ""
+    @State private var nameText = ""
     @FocusState private var isSearchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -41,6 +42,7 @@ struct HistoryView: View {
             switch sheet {
             case .tags: TagManagerView(model: model)
             case .naming: tagSheet
+            case .rename: nameSheet
             }
         }
     }
@@ -111,6 +113,9 @@ struct HistoryView: View {
             KeycapHint(key: "⏎", label: "Paste")
             KeycapHint(key: "⌘C", label: "Copy")
             KeycapHint(key: "⌘P", label: "Pin")
+            // Before ⌘T, and the pair reads in the order the words mean: name
+            // this one thing, then file it with the others.
+            KeycapHint(key: "⌘R", label: "Name")
             KeycapHint(key: "⌘T", label: "Tag")
             KeycapHint(key: "⌘⇧T", label: "Edit tags")
             KeycapHint(key: "⌘⌫", label: "Delete")
@@ -147,6 +152,18 @@ struct HistoryView: View {
             shortcutButton("p", modifiers: .command) {
                 if let item = model.selectedItem { model.togglePinned(item) }
             }
+            // ⌘R, not a second use of ⌘T: ⌘T attaches a *tag*, a label shared
+            // across clippings and listed in the sidebar, while this names one
+            // clipping and nothing else. Two jobs, two keys. ⌘R is free in this
+            // panel and is what "rename" is bound to nearly everywhere it
+            // exists — Return, the other candidate, already pastes.
+            //
+            // Seeded with the current name so ⌘R also *edits* one, and emptying
+            // the field is the way back out of a name you regret.
+            shortcutButton("r", modifiers: .command) {
+                nameText = model.selectedItem?.label ?? ""
+                model.sheet = .rename
+            }
             shortcutButton("t", modifiers: .command) { tagText = ""; model.sheet = .naming }
             shortcutButton("t", modifiers: [.command, .shift]) { model.sheet = .tags }
         }
@@ -174,6 +191,35 @@ struct HistoryView: View {
         }
         .padding(20)
         .frame(width: 300)
+    }
+
+    /// Built to the same measurements as `tagSheet` on purpose. The two answer
+    /// different questions, and the copy is where that difference lives: the
+    /// button says the verb that happens, and the helper line names both what a
+    /// name is for and how to take one back.
+    private var nameSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Name this clipping").font(.headline)
+            TextField("Name", text: $nameText)
+                .onSubmit { confirmName() }
+            Text("Shown on the card and searchable. Clear it to remove the name.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel") { model.sheet = nil }
+                Button("Save") { confirmName() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 300)
+    }
+
+    private func confirmName() {
+        if let id = model.selectedItem?.id {
+            model.setLabel(nameText, forItemId: id)
+        }
+        model.sheet = nil
     }
 
     private func confirmTag() {

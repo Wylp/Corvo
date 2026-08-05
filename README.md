@@ -27,6 +27,7 @@ bar, has no Dock icon, and never talks to the network.
 | **Remembers the source app** | Every clipping carries the app it came from, with its icon and brand colour |
 | **Colours code like an editor** | `curl`, JSON and C-family snippets are syntax-highlighted in the card |
 | **Tags that apply themselves** | A tag can carry a regex and/or a source app, and catches matching clippings on its own |
+| **Asks what to call things** | A rule tag can ask you to name what it catches, in a notification you type into |
 | **Pastes straight back** | `⏎` returns the clipping to the app you were in, no manual `⌘V` |
 | **Drops secrets on the floor** | Content marked concealed by password managers is never recorded |
 
@@ -76,6 +77,7 @@ so you never have to remember this table.
 | `←` `→` | Move through the carousel |
 | `⏎` | Paste into the app you came from |
 | `⌘C` | Copy to the clipboard and stop there |
+| `⌘R` | Name the selected clipping (empty the field to remove the name) |
 | `⌘T` | Tag the selected clipping |
 | `⌘⇧T` | Open the tag manager |
 | `⌘P` | Pin / unpin |
@@ -127,6 +129,17 @@ the fastest way to know a regex does what you meant, before it is ever saved.
 From then on, every resume command you copy arrives already tagged, and Corvo
 asks you what to call it — "auth refactor", "the migration one". The name is
 searchable, so `⌘⇧V` and typing `auth` brings back the command that resumes it.
+
+The question arrives as a **notification with a text field in it**: type the name
+into the banner and press Save. No window opens and nothing takes your focus, so
+you can answer it or ignore it. Ignoring it costs nothing — the clipping is
+already saved and already tagged, and its card says **Name this (⌘R)** until you
+give it one. Copy ten matching things in a row and you get one notification for
+the most recent, not ten stacked up.
+
+Corvo asks for notification permission the first time a rule actually catches
+something it wants named, not at launch. Say no, or never see the banner, and
+naming still works: open the panel and press `⌘R` on the card.
 
 Because tagged clippings never expire, those sessions stay findable no matter
 how much you copy over them.
@@ -184,10 +197,6 @@ Settings. Pinned and tagged clippings are exempt.
 Honest list of what the tag editor exposes or what people ask for, and what is
 not built:
 
-- **"Ask me to name what it catches"** — the toggle is stored and the rule
-  engine already reports which tags asked for it, but the prompt itself is not
-  wired up yet. Until it is, the Claude Code example above tags the command and
-  you name it by hand.
 - **Sync between machines**, OCR on images, a snippet editor, encryption of the
   history at rest.
 

@@ -10,6 +10,7 @@ final class AppEnvironment {
     let tracker: SourceTracker
     let retention: Retention
     let monitor: PasteboardMonitor
+    let namePrompt: NamePrompt
     private var pruneTimer: Timer?
 
     init() throws {
@@ -22,6 +23,15 @@ final class AppEnvironment {
         retention = Retention(repo: repo, blobs: blobs)
         monitor = PasteboardMonitor(pasteboard: NSPasteboard.general, repo: repo,
                                     tracker: tracker, prefs: prefs)
+        namePrompt = NamePrompt()
+
+        // Built here, asked for nothing here: `NamePrompt.init` registers a
+        // delegate and a category, neither of which shows the user anything.
+        // The authorization dialog waits for the first clipping that needs a
+        // name — see `NamePrompt.authorize()`.
+        monitor.onNeedsName = { [namePrompt] itemId, tag, text in
+            namePrompt.ask(toName: itemId, tag: tag.name, preview: text)
+        }
     }
 
     func start() {

@@ -19,10 +19,11 @@ struct AutoTagger {
 
     /// Applies every active rule to the item that was just inserted.
     ///
-    /// Returns the tags that matched **and** ask for a name, which is the list
-    /// a caller would prompt about. Nothing here notifies anyone, and no caller
-    /// consumes the list yet — the toggle that sets `promptsForName` exists, the
-    /// prompt it implies does not.
+    /// Returns the tags that matched **and** ask for a name. Nothing here
+    /// notifies anyone: `PasteboardMonitor.poll` takes the list and hands the
+    /// first of them to `NamePrompt`, so that the rule engine stays a pure
+    /// question of what matched and the answer about whom to bother lives one
+    /// layer up.
     ///
     /// ponytail: reads every tag and matches in a loop, one write per hit.
     /// Tags are user-made, so this is tens of rows against one item. If tags

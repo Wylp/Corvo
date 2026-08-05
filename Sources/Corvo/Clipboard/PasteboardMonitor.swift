@@ -14,6 +14,12 @@ final class PasteboardMonitor {
     private let autoTagger: AutoTagger
     let prefs: Preferences
 
+    /// A tag that asks to name what it catches just caught something. Carries
+    /// the item, the tag that spoke, and the captured text for the prompt to
+    /// quote back. `nil` wherever nothing is listening, which is every test and
+    /// every build without a notification centre behind it.
+    var onNeedsName: ((Int64, Tag, String?) -> Void)?
+
     private var lastChangeCount: Int
     private var timer: Timer?
 
@@ -90,8 +96,16 @@ final class PasteboardMonitor {
         // `start()`. Losing a tag is an annoyance; losing the clipping is the
         // one thing this app exists to prevent.
         do {
-            try autoTagger.apply(toItem: id, kind: captured.kind, text: captured.text,
-                                 sourceBundleId: source?.bundleId)
+            let promptable = try autoTagger.apply(toItem: id, kind: captured.kind,
+                                                  text: captured.text,
+                                                  sourceBundleId: source?.bundleId)
+            // `.first`, not all of them: two tags asking about one clipping is
+            // still one question — "what is this?" — and there is one name to
+            // give in answer. A prompt per matching tag would be two banners
+            // writing to the same column.
+            if let tag = promptable.first {
+                onNeedsName?(id, tag, captured.text)
+            }
         } catch {
             NSLog("Corvo: auto-tagging failed: \(error)")
         }

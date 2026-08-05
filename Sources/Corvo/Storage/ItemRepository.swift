@@ -243,6 +243,20 @@ final class ItemRepository {
         }
     }
 
+    /// The name the user gave this clipping, or `nil` to take it away again.
+    ///
+    /// Blank is stored as NULL rather than `""`, which is what makes clearing
+    /// the field the way back from a name you regret: the card falls back to
+    /// showing the content, and `search` stops matching an empty string against
+    /// every row. Same `nilIfBlank` the tag editor writes through, for the same
+    /// reason.
+    func setLabel(_ label: String?, for id: Int64) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE item SET label = ? WHERE id = ?",
+                           arguments: [Self.nilIfBlank(label), id])
+        }
+    }
+
     func setPinned(_ id: Int64, _ pinned: Bool) throws {
         try dbQueue.write { db in
             try db.execute(sql: "UPDATE item SET pinned = ? WHERE id = ?",

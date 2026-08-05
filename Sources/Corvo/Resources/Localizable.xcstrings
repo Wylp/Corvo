@@ -41,7 +41,7 @@
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },
     "Cancel": {
-      "comment": "Button that dismisses the tag sheet without adding anything."
+      "comment": "Button that dismisses the tag sheet or the rename sheet without changing anything."
     },
     "Choose": {
       "comment": "Confirmation button of that panel. Picks the app for the rule; it does not launch it."
@@ -138,7 +138,16 @@
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },
     "Name": {
-      "comment": "Label and placeholder of the tag name field."
+      "comment": "Label and placeholder of the tag name field, and of the clipping name field in the rename sheet."
+    },
+    "Name it": {
+      "comment": "Button on the notification that reveals the text field for naming a clipping."
+    },
+    "Name this (⌘R)": {
+      "comment": "Shown on a card whose rule tag asks for a name and that has none yet. ⌘R opens the rename sheet."
+    },
+    "Name this clipping": {
+      "comment": "Title of the naming notification, and the heading of the ⌘R rename sheet."
     },
     "New": {
       "comment": "Keycap rail label: ⌘N makes a tag."
@@ -219,7 +228,7 @@
       "comment": "VoiceOver label of the three-line preview of what the pattern matches."
     },
     "Save": {
-      "comment": "Button in the tag editor that writes the tag, and the ⏎ keycap rail label."
+      "comment": "Button in the tag editor that writes the tag, the ⏎ keycap rail label, and the button that saves a clipping's name from both the rename sheet and the notification."
     },
     "Save and apply": {
       "comment": "Button in the retroactive-apply confirmation: save the tag and tag the matches."
@@ -233,6 +242,9 @@
     "Show History": {
       "comment": "Menu bar item that opens the floating panel."
     },
+    "Shown on the card and searchable. Clear it to remove the name.": {
+      "comment": "Helper text under the field in the ⌘R rename sheet."
+    },
     "Sources": {
       "comment": "Sidebar section listing the apps the clippings came from."
     },
@@ -241,6 +253,9 @@
     },
     "Tag name": {
       "comment": "Placeholder of the text field in the new-tag sheet."
+    },
+    "Tagged %@": {
+      "comment": "Subtitle of the naming notification, saying which rule tag claimed the clipping. %@ is the tag name."
     },
     "Tags": {
       "comment": "Sidebar section listing the tags in use."
@@ -259,6 +274,9 @@
     },
     "Unknown": {
       "comment": "Fallback shown on a card when the source app was not recorded."
+    },
+    "What is this?": {
+      "comment": "Placeholder in the notification's text field, where the user types the name."
     },
     "Without it, Corvo copies but does not paste for you.": {
       "comment": "Caption under the Accessibility status."
@@ -291,6 +309,10 @@
       "shouldTranslate": false
     },
     "⌘P": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
+    },
+    "⌘R": {
       "comment": "Keycap glyph. Printed on the key itself, never translated.",
       "shouldTranslate": false
     },

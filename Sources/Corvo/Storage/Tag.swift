@@ -10,7 +10,8 @@ struct Tag: Codable, Identifiable, Equatable, Hashable {
     var pattern: String?
     var sourceBundleId: String?
     /// Whether a capture this tag claims should be offered a name. Read by
-    /// `AutoTagger`; the prompting itself is Task 12c.
+    /// `AutoTagger`, which reports the matches back to `PasteboardMonitor.poll`,
+    /// and again by `ItemCard` to mark a claimed clipping that still has none.
     var promptsForName: Bool = false
 
     var rule: TagRule { TagRule(pattern: pattern, sourceBundleId: sourceBundleId) }

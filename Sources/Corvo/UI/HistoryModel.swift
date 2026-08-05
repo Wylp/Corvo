@@ -29,6 +29,10 @@ final class HistoryModel {
         case tags
         /// Naming a new tag for the selected clipping.
         case naming
+        /// Naming the selected clipping itself — ⌘R. A different thing from
+        /// `.naming`: a tag is a label shared across clippings, a name belongs
+        /// to exactly one.
+        case rename
 
         var id: Self { self }
     }
@@ -86,9 +90,19 @@ final class HistoryModel {
         reload()
     }
 
+    /// Names the clipping, or clears the name when `name` is blank.
+    ///
+    /// Takes an id rather than a `ClipItem` because the other caller is the
+    /// notification, which comes back with an id and nothing else — and by then
+    /// the item may not be on screen, or in `items` at all.
+    func setLabel(_ name: String, forItemId id: Int64) {
+        Self.attempt("setLabel") { try repo.setLabel(name, for: id) }
+        reload()
+    }
+
     // MARK: - Tag management
 
-    /// Every write below goes through here, for the reason
+    /// Every write on this screen goes through here, for the reason
     /// `PasteboardMonitor.start` and `AppEnvironment.runPrune` already do it:
     /// a bare `try?` throws the failure away, and a tag screen that answers a
     /// failed save by doing nothing at all is indistinguishable from one that
