@@ -1,0 +1,26 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: macos-15
+    # softprops/action-gh-release creates the release through the API, which
+    # the default read-only GITHUB_TOKEN cannot do.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      # Corvo.xcodeproj is generated, not committed, and `make release`
+      # regenerates it — so xcodegen has to exist before the build runs.
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Build
+        run: make release
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Corvo.zip
+          generate_release_notes: true
