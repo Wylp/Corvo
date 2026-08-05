@@ -150,3 +150,109 @@ let contents = """
 try! contents.write(to: outDir.appendingPathComponent("Contents.json"),
                     atomically: true, encoding: .utf8)
 print("Contents.json")
+
+// MARK: - Menu bar
+
+// The status item is a different animal from the app icon: it has to be a
+// template image, a silhouette in alpha only. macOS paints it — dark on a light
+// menu bar, light on a dark one, inverted while the menu is open. Ship the
+// colour artwork there instead and it is stuck in one colour, invisible against
+// half the menu bars it will ever sit on.
+
+let menuDir = outDir.deletingLastPathComponent()
+    .appendingPathComponent("MenuBarIcon.imageset")
+try? FileManager.default.createDirectory(at: menuDir, withIntermediateDirectories: true)
+
+/// The subject as an alpha mask: how far each pixel stands off the plate becomes
+/// how opaque it is, so the edges stay antialiased instead of stair-stepped.
+///
+/// Reads with `colorAt`, the path `subjectBox` already proves works, and writes
+/// straight into the output buffer. `setColor(atX:y:)` is the tempting way to
+/// write and it silently does nothing on some bitmap formats.
+func silhouette(side: Int) -> Data? {
+    guard let tiff = src.tiffRepresentation,
+          let rep = NSBitmapImageRep(data: tiff),
+          let out = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: side * 4, bitsPerPixel: 32),
+          let pixels = out.bitmapData
+    else { return nil }
+
+    let plate = rep.colorAt(x: 0, y: 0) ?? .black
+    let plateLuma = plate.redComponent * 0.299 + plate.greenComponent * 0.587
+                  + plate.blueComponent * 0.114
+
+    // Tighter than the app icon: the menu bar gives ~18pt of height and no plate
+    // to sit on, so the silhouette uses nearly all of it.
+    let floorD = 0.045   // below this, background noise
+    let ceilD = 0.12     // above this, unambiguously the subject
+    let pad = CGFloat(side) * 0.06
+    let span = CGFloat(side) - pad * 2
+    let box = subjectBox(src)
+    let h = CGFloat(rep.pixelsHigh)
+
+    for y in 0..<side {
+        for x in 0..<side {
+            var coverage = 0.0
+            let u = (CGFloat(x) - pad) / span
+            let v = (CGFloat(y) - pad) / span
+            if u >= 0, u <= 1, v >= 0, v <= 1 {
+                let sx = Int(box.minX + u * box.width)
+                // colorAt counts rows from the top, subjectBox is in draw space.
+                let sy = Int(h - (box.minY + (1 - v) * box.height))
+                if sx >= 0, sx < rep.pixelsWide, sy >= 0, sy < rep.pixelsHigh,
+                   let c = rep.colorAt(x: sx, y: sy), c.alphaComponent > 0.1 {
+                    let luma = c.redComponent * 0.299 + c.greenComponent * 0.587
+                             + c.blueComponent * 0.114
+                    // A band, not a single threshold: the artwork's background
+                    // carries a faint vignette, so one hard cut either speckles
+                    // the noise into the mask or eats the darker feathers.
+                    let d = abs(luma - plateLuma)
+                    let t = min(1, max(0, (d - floorD) / (ceilD - floorD)))
+                    coverage = t * t * (3 - 2 * t)   // smoothstep
+                }
+            }
+            // Premultiplied: black in every channel, the shape lives in alpha.
+            let i = (y * side + x) * 4
+            pixels[i] = 0; pixels[i + 1] = 0; pixels[i + 2] = 0
+            pixels[i + 3] = UInt8(coverage * 255)
+        }
+    }
+    return out.representation(using: .png, properties: [:])
+}
+
+var menuEntries: [String] = []
+for scale in [1, 2, 3] {
+    let side = 18 * scale
+    let name = "menubar\(scale == 1 ? "" : "@\(scale)x").png"
+    guard let data = silhouette(side: side) else { exit(1) }
+    try! data.write(to: menuDir.appendingPathComponent(name))
+    menuEntries.append("""
+        {
+          "filename" : "\(name)",
+          "idiom" : "mac",
+          "scale" : "\(scale)x"
+        }
+    """)
+    print("MenuBarIcon/\(name)  \(side)×\(side)")
+}
+
+let menuContents = """
+{
+  "images" : [
+\(menuEntries.joined(separator: ",\n"))
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  },
+  "properties" : {
+    "template-rendering-intent" : "template"
+  }
+}
+
+"""
+try! menuContents.write(to: menuDir.appendingPathComponent("Contents.json"),
+                        atomically: true, encoding: .utf8)
+print("MenuBarIcon/Contents.json")

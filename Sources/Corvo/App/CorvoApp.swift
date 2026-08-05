@@ -6,7 +6,11 @@ struct CorvoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        MenuBarExtra("Corvo", systemImage: "bird") {
+        // A template image, not the colour artwork: macOS paints the status item
+        // itself — dark on a light menu bar, light on a dark one, inverted while
+        // the menu is open. Colour art there is stuck in one shade and vanishes
+        // against half the menu bars it will sit on.
+        MenuBarExtra("Corvo", image: "MenuBarIcon") {
             Button("Show History") { delegate.panel?.show() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
             SettingsLink { Text("Settings…") }
