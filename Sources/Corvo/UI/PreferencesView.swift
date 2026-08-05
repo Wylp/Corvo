@@ -75,7 +75,13 @@ struct PreferencesView: View {
             hasAccessibility = Paster.hasPermission
         }
         .alert("Delete clippings now?", isPresented: $isConfirmingCut) {
+            // The alert is reached by pressing Return in the number field
+            // (`onSubmit`), so Return has to land on the safe button here too —
+            // otherwise two Returns in a row confirm an irreversible deletion
+            // the user never read. `.cancel` already gets Escape; `.defaultAction`
+            // is what claims Return.
             Button("Cancel", role: .cancel) { revertRetention() }
+                .keyboardShortcut(.defaultAction)
             Button("Delete", role: .destructive) { applyCut() }
         } message: {
             Text("""
@@ -179,7 +185,7 @@ struct PreferencesView: View {
                 // Committed on every keystroke, unlike the numbers above, and
                 // for the opposite reason: a half-typed bundle id blocks nothing
                 // and destroys nothing, while a bundle id lost because the field
-                // still had focus when the window closed is a app the user
+                // still had focus when the window closed is an app the user
                 // believes is blocked and is not.
                 .onChange(of: blocklistText) { _, text in
                     prefs.blocklist = Blocklist.entries(text)
@@ -289,12 +295,26 @@ struct PreferencesView: View {
     /// A window can be closed with a field still focused and the edit never
     /// submitted. Raising a limit is safe to keep without asking; a cut is not,
     /// and an alert cannot follow a window that is already going away. Dropping
-    /// the unconfirmed cut is the failure mode that deletes nothing.
+    /// the unconfirmed cut is the failure mode that deletes nothing — including,
+    /// in a mixed edit, a raise sitting in the other field. That is the safe
+    /// direction and is left as is; it just means "writes the raise" is not an
+    /// accurate description of the mixed case.
     private func commitOnClose() {
+        // `isConfirmingCut` outlives this call otherwise: a `Settings` scene
+        // keeps its `@State` across close/open, so a flag left `true` here
+        // would present an unasked-for "Delete clippings now?" the next time
+        // the window opens.
+        isConfirmingCut = false
         guard maxItems >= prefs.maxItems, maxAgeDays >= prefs.maxAgeDays else {
             revertRetention()
             return
         }
+        // Only write when a draft actually differs from what is stored —
+        // otherwise opening and closing the window with nothing touched turns
+        // "unset, falls back to `RetentionPolicy.standard`" into a pinned
+        // `1000`/`30` that a future change to the standard policy can never
+        // reach.
+        guard maxItems != prefs.maxItems || maxAgeDays != prefs.maxAgeDays else { return }
         writeRetention()
     }
 

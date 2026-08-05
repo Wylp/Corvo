@@ -52,6 +52,19 @@ private func makePrefs() -> Preferences {
     #expect(parsed.rejected.isEmpty)
 }
 
+/// `"\r\n"` is a single grapheme cluster in Swift, so splitting on the
+/// `Character` `"\n"` alone never matches it — a list pasted with Windows line
+/// endings collapsed into one entry that blocked nothing. `isNewline` also
+/// covers a bare `"\r"`.
+@Test func crlfAndBareCRAreTreatedAsLineBreaks() {
+    #expect(Blocklist.entries("com.apple.Terminal\r\ncom.apple.Notes\rcom.apple.Safari")
+        == ["com.apple.Terminal", "com.apple.Notes", "com.apple.Safari"])
+}
+
+@Test func duplicateBlocklistLinesAreCollapsed() {
+    #expect(Blocklist.entries("com.apple.Notes\ncom.apple.Notes") == ["com.apple.Notes"])
+}
+
 /// A line that is not a bundle id is still stored, so that reopening the window
 /// shows the user the same list they typed and the same warning about it.
 /// Dropping it would make the typo vanish overnight and leave them believing an
@@ -86,6 +99,20 @@ private func makePrefs() -> Preferences {
     #expect(prefs.maxAgeDays == Preferences.ageLimits.lowerBound)
 
     prefs.maxAgeDays = 10_000
+    #expect(prefs.maxAgeDays == Preferences.ageLimits.upperBound)
+}
+
+/// The setter clamps, but `AppEnvironment.start()` reads the limit through the
+/// getter on every launch — so a value that reached `UserDefaults` some other
+/// way (`defaults write`, an MDM profile, a restored plist) has to come back
+/// bounded from there too, or the prune's launch-time read is unbounded.
+@Test func theGetterClampsAValueWrittenOutsideTheSetter() {
+    let defaults = UserDefaults(suiteName: UUID().uuidString)!
+    defaults.set(10_000_000, forKey: "maxItems")
+    defaults.set(99_999, forKey: "maxAgeDays")
+    let prefs = Preferences(defaults: defaults)
+
+    #expect(prefs.maxItems == Preferences.itemLimits.upperBound)
     #expect(prefs.maxAgeDays == Preferences.ageLimits.upperBound)
 }
 

@@ -159,6 +159,23 @@ private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
     #expect(items.map(\.sourceBundleId) == ["com.apple.Safari"])
 }
 
+// Ties `Blocklist` to the code that actually enforces it. `Blocklist.entries`
+// keeps a malformed line rather than dropping it, so the screen can warn about
+// it — this proves that malformed line, sitting first in the list, does not
+// stop the valid line next to it from still blocking here.
+@MainActor @Test func aMalformedBlocklistLineDoesNotDisarmTheValidOnesAroundIt() throws {
+    let (pb, repo, monitor, dir, tracker, prefs) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    prefs.blocklist = Blocklist.entries("Safari\ncom.agilebits.onepassword7")
+    tracker.recordActivation(
+        ItemSource(bundleId: "com.agilebits.onepassword7", name: "1Password"), at: t0)
+    pb.copyText("secret")
+    try monitor.poll(now: t0)
+
+    #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)
+}
+
 // Covers privacy fix 1: the declared source must not mask the inferred one in
 // the blocklist check. The tracker points at a blocked app; the pasteboard
 // declares an id that is not blocklisted. Before the fix (`source = declared ??

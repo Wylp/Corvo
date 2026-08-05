@@ -34,10 +34,15 @@ final class Preferences {
         set { defaults.set(newValue, forKey: "blocklist") }
     }
 
+    // The clamp runs on both read and write. The setter alone only bounds
+    // values Corvo itself wrote; `AppEnvironment.start()` reads through the
+    // getter on every launch, and a value that reached `UserDefaults` some
+    // other way — `defaults write`, an MDM profile, a restored plist — has to
+    // come back bounded from there too.
     var maxItems: Int {
         get {
             let v = defaults.integer(forKey: "maxItems")
-            return v > 0 ? v : RetentionPolicy.standard.maxItems
+            return v > 0 ? Self.clamped(v, to: Self.itemLimits) : RetentionPolicy.standard.maxItems
         }
         set { defaults.set(Self.clamped(newValue, to: Self.itemLimits), forKey: "maxItems") }
     }
@@ -45,7 +50,7 @@ final class Preferences {
     var maxAgeDays: Int {
         get {
             let v = defaults.integer(forKey: "maxAgeDays")
-            return v > 0 ? v : Int(RetentionPolicy.standard.maxAge / 86400)
+            return v > 0 ? Self.clamped(v, to: Self.ageLimits) : Int(RetentionPolicy.standard.maxAge / 86400)
         }
         set { defaults.set(Self.clamped(newValue, to: Self.ageLimits), forKey: "maxAgeDays") }
     }
@@ -103,8 +108,9 @@ enum Blocklist {
         return s.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
     }
 
-    /// Every non-blank line, trimmed, in the order it was typed — the ones that
-    /// are not bundle ids included. This is what gets stored.
+    /// Every non-blank line, trimmed and de-duplicated, in the order it was
+    /// typed — the ones that are not bundle ids included. This is what gets
+    /// stored.
     ///
     /// Storing only the enforceable lines was the first version and it was
     /// wrong: the typo disappeared from the editor the next time the window
@@ -115,10 +121,18 @@ enum Blocklist {
     ///
     /// Blank lines are dropped rather than kept: those are the user pressing
     /// Return, not something they typed and got wrong.
+    ///
+    /// Split on `Character.isNewline`, not on the `Character` `"\n"` alone:
+    /// `"\r\n"` is a single grapheme cluster in Swift, so splitting on `"\n"`
+    /// let a CRLF-pasted list — from a web page, a wiki, anything not authored
+    /// on this machine — collapse into one entry that matches no bundle id,
+    /// silently switching off every block in it. `isNewline` also covers a bare
+    /// `"\r"`.
     static func entries(_ text: String) -> [String] {
-        text.split(separator: "\n", omittingEmptySubsequences: false)
+        var seen = Set<String>()
+        return text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     /// The same entries, split into the ones that will be enforced and the ones
