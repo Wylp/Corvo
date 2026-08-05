@@ -19,18 +19,6 @@ struct ItemCard: View {
 
     private static let radius: CGFloat = 10
 
-    /// `.relative` formats in the *system* locale rather than the app's. On a
-    /// machine set to Portuguese that writes "há 2 minutos" into an app whose
-    /// every other word is English — the String Catalog carries no translations,
-    /// so the app always resolves to its development language, and the date has
-    /// to follow the app rather than the machine.
-    ///
-    /// The bundle also *registers* pt-BR, for one empty `InfoPlist.strings`, so
-    /// `preferredLocalizations` is no help here: it answers pt-BR on this
-    /// machine. The development language is the one that matches what the rest
-    /// of the card says.
-    private static let appLocale = Locale(identifier: Bundle.main.developmentLocalization ?? "en")
-
     private var fileIsMissing: Bool {
         guard item.kind == .file, let path = item.filePath else { return false }
         return !FileManager.default.fileExists(atPath: path)
@@ -60,11 +48,11 @@ struct ItemCard: View {
         // selection you can read without looking for it.
         .offset(y: isSelected ? -6 : 0)
         .opacity(fileIsMissing ? 0.5 : 1)
-        // Not belt and braces with `appLocale` on the format style: SwiftUI
+        // Not belt and braces with `Locale.app` on the format style: SwiftUI
         // re-resolves a format style against the environment's locale, which
         // silently wins over the one the style was given. Setting both is what
         // makes the date come out in English on a Portuguese machine.
-        .environment(\.locale, Self.appLocale)
+        .environment(\.locale, Locale.app)
         .accessibilityElement(children: .combine)
     }
 
@@ -95,7 +83,7 @@ struct ItemCard: View {
             // Tabular digits: the carousel redraws on every keystroke, and the
             // ages tick while it is open.
             Text(item.createdAt,
-                 format: .relative(presentation: .numeric).locale(Self.appLocale))
+                 format: .relative(presentation: .numeric).locale(Locale.app))
                 .font(.caption2)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)

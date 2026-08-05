@@ -69,8 +69,10 @@ struct AutoTagger {
     ///
     /// ponytail: reads the history and matches in Swift, because the pattern is
     /// a regex and SQLite carries no `REGEXP` of its own. A scan of `maxItems`
-    /// short rows, a thousand by default. Upgrade: register a compiled `REGEXP`
-    /// function on the connection if that ceiling is ever raised far.
+    /// short rows — a thousand by default, and capped by `Preferences.itemLimits`
+    /// now that the user sets it. Only ever runs from the editor's preview and
+    /// the retroactive apply, never from `poll`. Upgrade: register a compiled
+    /// `REGEXP` function on the connection before that cap is raised.
     func items(matching rule: TagRule) throws -> [ClipItem] {
         guard rule.isActive else { return [] }
         return try repo.search(text: "", sourceBundleId: nil, tagId: nil,

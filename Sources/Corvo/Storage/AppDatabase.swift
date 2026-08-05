@@ -51,10 +51,11 @@ enum AppDatabase {
                 t.column("createdAt", .datetime).notNull()
                 t.column("lastUsedAt", .datetime)
             }
-            // ponytail: search is a LIKE over `text` and `sourceName`. With the
-            // 1000-item ceiling from the retention policy that answers in
-            // microseconds. If the ceiling grows a lot, move to an FTS5 virtual
-            // table plus triggers.
+            // ponytail: search is a LIKE over `text` and `sourceName`. The row
+            // count it scans is now the user's to set, so what bounds it is
+            // `Preferences.itemLimits` rather than the old fixed 1000 — 10k
+            // short rows still answer in well under a frame. Move to an FTS5
+            // virtual table plus triggers before raising that bound.
             try db.create(index: "idx_item_hash", on: "item",
                           columns: ["contentHash"], unique: true)
             try db.create(index: "idx_item_createdAt", on: "item", columns: ["createdAt"])

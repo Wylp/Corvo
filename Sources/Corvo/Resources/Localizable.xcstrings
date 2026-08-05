@@ -4,8 +4,17 @@
     "A tag named “%@” already exists.": {
       "comment": "Inline error in the tag editor when the name already belongs to another tag. %@ is the name the user typed."
     },
+    "Accessibility granted": {
+      "comment": "Status line when Corvo may paste for the user."
+    },
+    "Accessibility pending": {
+      "comment": "Status line when Accessibility permission is missing."
+    },
     "Add": {
       "comment": "Button that confirms the new tag in the tag sheet."
+    },
+    "Add app…": {
+      "comment": "Button that opens a file picker to add an app to the blocklist."
     },
     "Add this tag to the clippings already in your history that match": {
       "comment": "Tooltip of the “Apply to existing…” button in the tag editor."
@@ -24,6 +33,9 @@
     },
     "Ask me to name what it catches": {
       "comment": "Toggle in the tag editor: offer to name a clipping this tag claims."
+    },
+    "Blocks nothing — not a bundle ID: %@": {
+      "comment": "Warning under the blocklist. %@ is the quoted, comma-separated lines that are not bundle ids and are therefore enforcing nothing."
     },
     "Blue": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
@@ -50,11 +62,20 @@
     "Corvo needs Accessibility permission to paste straight into the app you were using. The content is already on your clipboard — paste it with ⌘V.": {
       "comment": "Alert body for the missing-permission case. Must make clear the content was not lost — it is already on the clipboard."
     },
+    "Corvo will keep the newest ^[%lld clipping](inflect: true) and delete anything older than ^[%lld day](inflect: true). Pinned and tagged clippings are never deleted. Corvo has no undo.": {
+      "comment": "Body of the lowered-limit confirmation. First %lld is the item limit, second is the age limit in days."
+    },
     "Could not save this tag. Nothing was changed.": {
       "comment": "Inline error next to the Save button when the write to the database failed."
     },
     "Delete": {
       "comment": "Key-hint label for the delete key, which removes the selected item."
+    },
+    "Delete after": {
+      "comment": "Label of the field that sets how long a clipping is kept."
+    },
+    "Delete clippings now?": {
+      "comment": "Title of the confirmation shown when the user lowers a retention limit."
     },
     "Delete tag": {
       "comment": "Tooltip and VoiceOver label of the − button under the tag list."
@@ -80,8 +101,26 @@
     "Green": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },
+    "History": {
+      "comment": "Section title for the retention limits."
+    },
+    "Ignore": {
+      "comment": "Confirmation button of the app picker. Adds the app to the blocklist."
+    },
+    "Ignored apps": {
+      "comment": "Section title for the list of apps Corvo never records."
+    },
+    "Ignored apps, one bundle ID per line": {
+      "comment": "VoiceOver label for the blocklist text editor."
+    },
     "Image unavailable": {
       "comment": "Shown on a card whose image file could not be read from disk."
+    },
+    "Keep at most": {
+      "comment": "Label of the field that sets the maximum number of clippings."
+    },
+    "Launch at login": {
+      "comment": "Toggle that registers Corvo as a login item."
     },
     "Matches ^[%lld clipping](inflect: true) in your history.": {
       "comment": "Status under the pattern field. %lld is how many stored clippings the rule claims."
@@ -119,6 +158,12 @@
     "Nothing you have copied matches yet. New copies still can.": {
       "comment": "Status under the pattern field when a valid rule matches nothing stored yet."
     },
+    "One bundle ID per line. Nothing copied in these apps is kept.": {
+      "comment": "Caption under the blocklist."
+    },
+    "Open Login Items": {
+      "comment": "Button that opens System Settings at the Login Items list."
+    },
     "Open Settings": {
       "comment": "Alert button that opens System Settings at the Accessibility panel."
     },
@@ -131,6 +176,9 @@
     "Pattern": {
       "comment": "Label and placeholder of the tag editor's regular-expression field."
     },
+    "Permissions": {
+      "comment": "Section title for the Accessibility permission status."
+    },
     "Pin": {
       "comment": "Key-hint label for Command-P, which pins the selected item."
     },
@@ -139,6 +187,9 @@
     },
     "Pinned": {
       "comment": "Accessibility label for the pin badge on a card."
+    },
+    "Pinned or tagged clippings never expire, and do not count towards the limit.": {
+      "comment": "Caption under the retention fields."
     },
     "Press ⌘N to make one.": {
       "comment": "Second line of the empty tag list, naming the shortcut that creates a tag."
@@ -152,6 +203,9 @@
     "Red": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },
+    "Registered, but switched off in System Settings.": {
+      "comment": "Warning under the login toggle when macOS has the item registered but disabled."
+    },
     "Sample of matching clippings": {
       "comment": "VoiceOver label of the three-line preview of what the pattern matches."
     },
@@ -163,6 +217,9 @@
     },
     "Search content or app…": {
       "comment": "Placeholder of the search field at the top of the panel."
+    },
+    "Settings…": {
+      "comment": "Menu bar item that opens the Settings window."
     },
     "Show History": {
       "comment": "Menu bar item that opens the floating panel."
@@ -191,15 +248,27 @@
     "Unknown": {
       "comment": "Fallback shown on a card when the source app was not recorded."
     },
+    "Without it, Corvo copies but does not paste for you.": {
+      "comment": "Caption under the Accessibility status."
+    },
     "Yellow": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },
     "^[%lld clipping](inflect: true) will lose this tag. The clippings themselves stay.": {
       "comment": "Message of the delete confirmation. %lld is how many clippings carry the tag."
     },
+    "clippings": {
+      "comment": "Unit after the maximum-items field. Follows a number."
+    },
+    "days": {
+      "comment": "Unit after the maximum-age field. Follows a number."
+    },
     "esc": {
       "comment": "Keycap glyph. Printed on the key itself, never translated.",
       "shouldTranslate": false
+    },
+    "macOS refused the change: %@": {
+      "comment": "Error under the login toggle. %@ is the system's own message."
     },
     "⌘C": {
       "comment": "Keycap glyph. Printed on the key itself, never translated.",

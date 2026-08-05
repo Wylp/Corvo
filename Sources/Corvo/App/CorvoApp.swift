@@ -9,9 +9,21 @@ struct CorvoApp: App {
         MenuBarExtra("Corvo", systemImage: "bird") {
             Button("Show History") { delegate.panel?.show() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
+            SettingsLink { Text("Settings…") }
+                .keyboardShortcut(",")
             Divider()
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
+        }
+
+        Settings {
+            if let env = delegate.env {
+                // The prune is handed over rather than left to the hourly timer:
+                // the user who just confirmed a lower limit should see the
+                // history shrink now, not at some unannounced point within the
+                // next hour.
+                PreferencesView(prefs: env.prefs, onRetentionLowered: env.runPrune)
+            }
         }
     }
 }

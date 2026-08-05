@@ -38,10 +38,16 @@ final class AppEnvironment {
     /// Named `runPrune`, not `prune`: `Retention.prune` is the method this one
     /// calls, and two `prune`s one line apart read like a recursion bug.
     ///
+    /// Not private: the Settings window calls it directly after the user
+    /// confirms a lower retention limit, so the deletion they agreed to happens
+    /// while they are looking at it.
+    ///
     /// ponytail: runs on the main thread (DB write + blob directory scan) on
-    /// launch and hourly. Fine up to the 1000-item retention ceiling; move to
-    /// a background queue if that ceiling ever grows.
-    private func runPrune() {
+    /// launch, hourly, and on a confirmed limit change. The item ceiling is the
+    /// user's to type now, so what keeps this honest is `Preferences.itemLimits`
+    /// rather than the old fixed 1000; move this to a background queue before
+    /// raising that bound.
+    func runPrune() {
         do {
             try retention.prune(policy: prefs.retentionPolicy, now: Date())
         } catch {
