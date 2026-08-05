@@ -9,7 +9,7 @@ cask "corvo" do
   desc "Clipboard history organized by source app and by tags"
   homepage "https://github.com/Wylp/Corvo"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Corvo.app"
 
