@@ -195,3 +195,29 @@ private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
 
     #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)
 }
+
+/// The seam between what the user pastes into the blocklist field and the code
+/// that enforces it. Splitting on the `Character` "\n" left a `\r` glued to every
+/// entry of a CRLF paste, so no entry equalled a real bundle id and the whole
+/// privacy control went quiet — no error, nothing on screen, just a list that
+/// stopped blocking.
+///
+/// The other end-to-end blocklist test uses plain `\n` and passes on that broken
+/// code too. This one is the guard for the line ending.
+@MainActor @Test func aBlocklistPastedWithWindowsLineEndingsStillBlocks() throws {
+    let (pb, repo, monitor, dir, tracker, prefs) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    prefs.blocklist = Blocklist.entries("com.apple.Safari\r\ncom.agilebits.onepassword7\r\n")
+
+    #expect(prefs.blocklist == ["com.apple.Safari", "com.agilebits.onepassword7"])
+
+    // Both ends of the list, so a stray `\r` on either one is caught.
+    for bundleId in ["com.apple.Safari", "com.agilebits.onepassword7"] {
+        tracker.recordActivation(ItemSource(bundleId: bundleId, name: bundleId), at: t0)
+        pb.copyText("secret from \(bundleId)")
+        try monitor.poll(now: t0)
+    }
+
+    #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)
+}
