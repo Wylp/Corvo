@@ -32,9 +32,13 @@ struct CorvoApp: App {
     }
 }
 
+/// `ObservableObject`, and not decoration: the `Settings` scene reads `env`, but
+/// `env` is only built in `applicationDidFinishLaunching` — after SwiftUI has
+/// already evaluated the scene. Without something to observe, that evaluation is
+/// the only one there is and the window stays empty for the life of the process.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private(set) var env: AppEnvironment?
+final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+    @Published private(set) var env: AppEnvironment?
     private(set) var panel: PanelController?
     private(set) var model: HistoryModel?
     private var hotkey: GlobalHotkey?
