@@ -109,6 +109,30 @@ private func makeEnvironment(_ pb: NSPasteboard) throws
     #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 10).isEmpty)
 }
 
+/// The test above marks one item with both the payload and the marker, which is
+/// the common real-world shape — and which `first?.types` handles just as well as
+/// `flatMap`, so it cannot tell the two apart. This one splits them across two
+/// items, which is the input the adapter's `flatMap` exists for.
+///
+/// Without it, reverting `availableTypes` to `pasteboardItems?.first?.types` — the
+/// bug fixed in Task 7 — passes the whole suite while a password goes to the
+/// database in plaintext.
+@MainActor @Test func aConcealedMarkerOnASeparateItemIsAlsoHonoured() throws {
+    let pb = privatePasteboard()
+    let (monitor, repo, _, dir) = try makeEnvironment(pb)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    pb.clearContents()
+    let payload = NSPasteboardItem()
+    payload.setString("password", forType: .string)
+    let marker = NSPasteboardItem()
+    marker.setString("", forType: .init(rawValue: "org.nspasteboard.ConcealedType"))
+    pb.writeObjects([payload, marker])
+    try monitor.poll(now: t0)
+
+    #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 10).isEmpty)
+}
+
 @MainActor @Test func writesBackToThePasteboardTheSameContentThatWasCaptured() throws {
     let source = privatePasteboard()
     let destination = privatePasteboard()
