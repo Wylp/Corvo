@@ -25,9 +25,9 @@ final class HistoryModel {
         items.indices.contains(selectedIndex) ? items[selectedIndex] : nil
     }
 
-    init(repo: ItemRepository) {
+    init(repo: ItemRepository, prefs: Preferences) {
         self.repo = repo
-        self.tagger = AutoTagger(repo: repo)
+        self.tagger = AutoTagger(repo: repo, prefs: prefs)
         reload()
     }
 
@@ -65,24 +65,39 @@ final class HistoryModel {
 
     func addTag(_ name: String, to item: ClipItem) {
         guard let id = item.id else { return }
-        try? repo.addTag(named: name, to: id)
+        Self.attempt("addTag") { try repo.addTag(named: name, to: id) }
         reload()
     }
 
     // MARK: - Tag management
 
-    /// `nil` when the write failed. The caller uses the answer to keep the row
-    /// selected, since a create only learns its id here.
+    /// Every write below goes through here, for the reason
+    /// `PasteboardMonitor.start` and `AppEnvironment.runPrune` already do it:
+    /// a bare `try?` throws the failure away, and a tag screen that answers a
+    /// failed save by doing nothing at all is indistinguishable from one that
+    /// worked. `nil` is the caller's cue to say so.
+    private static func attempt<T>(_ what: String, _ write: () throws -> T) -> T? {
+        do {
+            return try write()
+        } catch {
+            NSLog("Corvo: \(what) failed: \(error)")
+            return nil
+        }
+    }
+
+    /// `nil` when the write failed — the editor shows that next to Save. The
+    /// caller also uses the answer to keep the row selected, since a create only
+    /// learns its id here.
     @discardableResult
     func saveTag(_ tag: Tag) -> Tag? {
-        let saved = try? repo.saveTag(tag)
+        let saved = Self.attempt("saveTag") { try repo.saveTag(tag) }
         reload()
         return saved
     }
 
     func deleteTag(_ tag: Tag) {
         guard let id = tag.id else { return }
-        try? repo.deleteTag(id)
+        Self.attempt("deleteTag") { try repo.deleteTag(id) }
         // The sidebar may be filtering by the tag that just stopped existing.
         // Assigning triggers `reload()` on its own.
         guard selectedTag != id else { return selectedTag = nil }
@@ -91,19 +106,21 @@ final class HistoryModel {
 
     func itemCount(forTag tag: Tag) -> Int {
         guard let id = tag.id else { return 0 }
-        return (try? repo.itemCount(forTag: id)) ?? 0
+        return Self.attempt("itemCount") { try repo.itemCount(forTag: id) } ?? 0
     }
 
     /// What the rule would claim right now. The editor's preview and the count
     /// the retroactive apply asks the user to confirm come from this one call,
     /// so the number shown is the set that gets tagged.
     func items(matching rule: TagRule) -> [ClipItem] {
-        (try? tagger.items(matching: rule)) ?? []
+        Self.attempt("items(matching:)") { try tagger.items(matching: rule) } ?? []
     }
 
     @discardableResult
     func applyRuleToExistingItems(_ tag: Tag) -> Int {
-        let tagged = (try? tagger.applyToExistingItems(tag)) ?? 0
+        let tagged = Self.attempt("applyToExistingItems") {
+            try tagger.applyToExistingItems(tag)
+        } ?? 0
         reload()
         return tagged
     }

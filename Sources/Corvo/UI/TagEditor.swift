@@ -62,6 +62,9 @@ struct TagEditor: View {
 
     @State private var preview: [ClipItem] = []
     @State private var isConfirmingApply = false
+    /// Set when a write came back `nil`. Without it the screen answers a failed
+    /// save by not changing, which is exactly what a successful save looks like.
+    @State private var saveFailed = false
 
     /// How many matches the sample shows. Three lines answer "did it match what
     /// I meant" without turning the editor into a second history list.
@@ -217,14 +220,20 @@ struct TagEditor: View {
     }
 
     private var actions: some View {
-        HStack(spacing: 10) {
-            Button("Apply to existing…") { isConfirmingApply = true }
-                .disabled(!canSave || preview.isEmpty)
-                .help("Add this tag to the clippings already in your history that match")
-            Spacer(minLength: 0)
-            Button("Save") { save() }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canSave)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Button("Apply to existing…") { isConfirmingApply = true }
+                    .disabled(!canSave || preview.isEmpty)
+                    .help("Add this tag to the clippings already in your history that match")
+                Spacer(minLength: 0)
+                Button("Save") { save() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canSave)
+            }
+            if saveFailed {
+                inline("exclamationmark.triangle.fill", .red,
+                       Text("Could not save this tag. Nothing was changed."))
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -277,18 +286,29 @@ struct TagEditor: View {
     }
 
     private func save() {
-        guard canSave, let saved = model.saveTag(draft) else { return }
-        draft = saved
+        guard let saved = write() else { return }
         onSaved(saved)
     }
 
     /// Saving first is not an extra step: `addTag` would otherwise create the
     /// tag from its name alone, without the rule the user just wrote.
     private func saveAndApply() {
-        guard canSave, let saved = model.saveTag(draft) else { return }
-        draft = saved
+        guard let saved = write() else { return }
         model.applyRuleToExistingItems(saved)
         onSaved(saved)
+    }
+
+    /// The one write path, so the failure is reported the same way whichever
+    /// button was pressed.
+    private func write() -> Tag? {
+        guard canSave else { return nil }
+        guard let saved = model.saveTag(draft) else {
+            saveFailed = true
+            return nil
+        }
+        saveFailed = false
+        draft = saved
+        return saved
     }
 
     // MARK: - Pieces

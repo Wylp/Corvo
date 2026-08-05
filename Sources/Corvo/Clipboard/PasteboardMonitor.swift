@@ -22,7 +22,7 @@ final class PasteboardMonitor {
         self.pasteboard = pasteboard
         self.repo = repo
         self.tracker = tracker
-        self.autoTagger = AutoTagger(repo: repo)
+        self.autoTagger = AutoTagger(repo: repo, prefs: prefs)
         self.prefs = prefs
         self.lastChangeCount = pasteboard.changeCount
     }

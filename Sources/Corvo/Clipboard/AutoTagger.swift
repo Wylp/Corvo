@@ -8,9 +8,13 @@ import Foundation
 @MainActor
 struct AutoTagger {
     private let repo: ItemRepository
+    /// Only for the item ceiling `items(matching:)` scans up to. It has to be
+    /// the ceiling retention actually enforces, not the default one.
+    private let prefs: Preferences
 
-    init(repo: ItemRepository) {
+    init(repo: ItemRepository, prefs: Preferences) {
         self.repo = repo
+        self.prefs = prefs
     }
 
     /// Applies every active rule to the item that was just inserted.
@@ -57,28 +61,38 @@ struct AutoTagger {
     /// editor's live preview and the retroactive apply, so the count the user is
     /// asked to confirm is exactly the set that gets tagged.
     ///
+    /// The limit is `prefs.retentionPolicy.maxItems` — the same number
+    /// `AppEnvironment.runPrune` enforces — and not `RetentionPolicy.standard`.
+    /// The user can raise the preference; a limit stuck at the default would
+    /// make the preview undercount and the retroactive apply skip the tail of
+    /// the history in silence, which is the one thing this pair may not do.
+    ///
     /// ponytail: reads the history and matches in Swift, because the pattern is
-    /// a regex and SQLite carries no `REGEXP` of its own. Retention caps the
-    /// table at `maxItems`, so this is a scan of a thousand short rows. Upgrade:
-    /// register a compiled `REGEXP` function on the connection if the cap lifts.
+    /// a regex and SQLite carries no `REGEXP` of its own. A scan of `maxItems`
+    /// short rows, a thousand by default. Upgrade: register a compiled `REGEXP`
+    /// function on the connection if that ceiling is ever raised far.
     func items(matching rule: TagRule) throws -> [ClipItem] {
         guard rule.isActive else { return [] }
         return try repo.search(text: "", sourceBundleId: nil, tagId: nil,
-                               limit: RetentionPolicy.standard.maxItems)
+                               limit: prefs.retentionPolicy.maxItems)
             .filter { rule.matches(text: Self.matchable(kind: $0.kind, text: $0.text),
                                    sourceBundleId: $0.sourceBundleId) }
     }
 
     /// Attaches `tag` to every item its rule already matches, and answers how
-    /// many. Never called from `poll`: tagging a thousand rows has no undo in
-    /// this app, so it stays something the user asks for by name.
+    /// many links that actually created. Items that already carried the tag are
+    /// not counted: the number goes into "added to N clippings", and running the
+    /// same apply twice changed nothing the second time.
+    ///
+    /// Never called from `poll`: tagging a thousand rows has no undo in this
+    /// app, so it stays something the user asks for by name.
     @discardableResult
     func applyToExistingItems(_ tag: Tag) throws -> Int {
-        let matches = try items(matching: tag.rule)
-        for item in matches {
+        var added = 0
+        for item in try items(matching: tag.rule) {
             guard let id = item.id else { continue }
-            try repo.addTag(named: tag.name, to: id)
+            if try repo.addTag(named: tag.name, to: id) { added += 1 }
         }
-        return matches.count
+        return added
     }
 }

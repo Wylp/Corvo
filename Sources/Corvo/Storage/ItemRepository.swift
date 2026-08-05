@@ -144,10 +144,15 @@ final class ItemRepository {
         }
     }
 
-    func addTag(named name: String, to itemId: Int64) throws {
+    /// `true` when this created the link, `false` when the item already carried
+    /// the tag. Callers that report a count to the user need the difference —
+    /// the conflict is ignored, so "how many rows matched" is not "how many
+    /// rows changed".
+    @discardableResult
+    func addTag(named name: String, to itemId: Int64) throws -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        try dbQueue.write { db in
+        guard !trimmed.isEmpty else { return false }
+        return try dbQueue.write { db in
             let existing = try Tag.filter(Tag.Columns.name == trimmed).fetchOne(db)
             let tagId: Int64
             if let existing, let id = existing.id {
@@ -158,6 +163,7 @@ final class ItemRepository {
                 tagId = newTag.id!
             }
             try ItemTag(itemId: itemId, tagId: tagId).insert(db, onConflict: .ignore)
+            return db.changesCount > 0
         }
     }
 
@@ -167,9 +173,13 @@ final class ItemRepository {
     /// changing a rule cannot cost the user the items they tagged by hand. That
     /// is the whole reason there is no delete-then-insert path here.
     ///
-    /// A new tag whose name already belongs to another folds into that row
-    /// rather than failing the unique index. The editor stops the case before it
-    /// arrives; this is what keeps the repository from throwing at a caller that
+    /// A new tag whose name already belongs to another resolves to that row
+    /// rather than failing the unique index, and the stored one is returned
+    /// **unchanged**: the incoming draft is a second tag that happens to collide,
+    /// not a correction of the first, and letting its blank pattern and colour
+    /// win would erase the real tag's rule with no undo and no message. The
+    /// editor stops the case before it arrives; this is what keeps the
+    /// repository from either throwing or losing configuration at a caller that
     /// did not.
     @discardableResult
     func saveTag(_ tag: Tag) throws -> Tag {
@@ -193,9 +203,7 @@ final class ItemRepository {
                 return saved
             }
             if let existing = try Tag.filter(Tag.Columns.name == saved.name).fetchOne(db) {
-                saved.id = existing.id
-                try saved.update(db)
-                return saved
+                return existing
             }
             try saved.insert(db)
             return saved

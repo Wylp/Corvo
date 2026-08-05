@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let env = try AppEnvironment()
             env.start()
             self.env = env
-            let model = HistoryModel(repo: env.repo)
+            let model = HistoryModel(repo: env.repo, prefs: env.prefs)
             model.observeDatabase()
             self.model = model
             panel = PanelController(content: HistoryView(

@@ -11,7 +11,8 @@ private func makeTagger() throws -> (AutoTagger, ItemRepository, URL) {
         .appendingPathComponent("corvo-autotag-\(UUID().uuidString)")
     let repo = ItemRepository(dbQueue: try AppDatabase.make(at: nil),
                               blobs: BlobStore(directory: dir))
-    return (AutoTagger(repo: repo), repo, dir)
+    let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+    return (AutoTagger(repo: repo, prefs: prefs), repo, dir)
 }
 
 @discardableResult

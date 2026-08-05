@@ -10,7 +10,8 @@ private func makeModel() throws -> (HistoryModel, ItemRepository, URL) {
         .appendingPathComponent("corvo-hm-\(UUID().uuidString)")
     let repo = ItemRepository(dbQueue: try AppDatabase.make(at: nil),
                               blobs: BlobStore(directory: dir))
-    return (HistoryModel(repo: repo), repo, dir)
+    let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+    return (HistoryModel(repo: repo, prefs: prefs), repo, dir)
 }
 
 private func textItem(_ s: String) -> CapturedItem {

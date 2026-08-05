@@ -1,8 +1,32 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "A tag named “%@” already exists.": {
+      "comment": "Inline error in the tag editor when the name already belongs to another tag. %@ is the name the user typed."
+    },
     "Add": {
       "comment": "Button that confirms the new tag in the tag sheet."
+    },
+    "Add this tag to the clippings already in your history that match": {
+      "comment": "Tooltip of the “Apply to existing…” button in the tag editor."
+    },
+    "Any app": {
+      "comment": "Option in the tag editor's source picker: the rule is not restricted to one app."
+    },
+    "Applies itself": {
+      "comment": "VoiceOver label of the bolt icon marking a tag in the list that carries a rule."
+    },
+    "Apply this rule to what you already copied?": {
+      "comment": "Title of the confirmation before the tag is applied retroactively."
+    },
+    "Apply to existing…": {
+      "comment": "Button in the tag editor that starts the retroactive apply. The ellipsis says it opens a confirmation first."
+    },
+    "Ask me to name what it catches": {
+      "comment": "Toggle in the tag editor: offer to name a clipping this tag claims."
+    },
+    "Blue": {
+      "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },
     "Cancel": {
       "comment": "Button that dismisses the tag sheet without adding anything."
@@ -12,6 +36,9 @@
     },
     "Copied, but not pasted": {
       "comment": "Alert title after Enter when Accessibility permission is missing: the item was copied but not pasted."
+    },
+    "Copy": {
+      "comment": "Keycap rail label: ⌘C copies the selected clipping without pasting it."
     },
     "Copy something and come back.": {
       "comment": "Empty-history hint under the 'Nothing here yet' title."
@@ -23,11 +50,50 @@
     "Corvo needs Accessibility permission to paste straight into the app you were using. The content is already on your clipboard — paste it with ⌘V.": {
       "comment": "Alert body for the missing-permission case. Must make clear the content was not lost — it is already on the clipboard."
     },
+    "Could not save this tag. Nothing was changed.": {
+      "comment": "Inline error next to the Save button when the write to the database failed."
+    },
     "Delete": {
       "comment": "Key-hint label for the delete key, which removes the selected item."
     },
+    "Delete tag": {
+      "comment": "Tooltip and VoiceOver label of the − button under the tag list."
+    },
+    "Delete the tag “%@”?": {
+      "comment": "Title of the delete confirmation. %@ is the tag's name."
+    },
+    "Done": {
+      "comment": "Keycap rail label: esc closes the tag manager."
+    },
+    "Edit tags": {
+      "comment": "Keycap rail label: ⌘⇧T opens the tag manager."
+    },
+    "Edit tags and rules": {
+      "comment": "VoiceOver label of the sidebar button that opens the tag manager."
+    },
+    "Edit tags and rules (⌘⇧T)": {
+      "comment": "Tooltip of the sidebar button that opens the tag manager."
+    },
+    "From app": {
+      "comment": "Label of the tag editor field holding the source-app half of the rule."
+    },
+    "Green": {
+      "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
+    },
     "Image unavailable": {
       "comment": "Shown on a card whose image file could not be read from disk."
+    },
+    "Matches ^[%lld clipping](inflect: true) in your history.": {
+      "comment": "Status under the pattern field. %lld is how many stored clippings the rule claims."
+    },
+    "Mint": {
+      "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
+    },
+    "Name": {
+      "comment": "Label and placeholder of the tag name field."
+    },
+    "New": {
+      "comment": "Keycap rail label: ⌘N makes a tag."
     },
     "New tag": {
       "comment": "Title of the sheet that adds a tag to the selected item."
@@ -35,26 +101,65 @@
     "No matches": {
       "comment": "Title shown when the search finds nothing."
     },
+    "No rule yet — this tag is only applied by hand.": {
+      "comment": "Status under the pattern field when the tag carries no rule at all."
+    },
+    "No tags yet": {
+      "comment": "Empty state of the tag list."
+    },
+    "Not a valid pattern. Check the brackets and escapes.": {
+      "comment": "Status under the pattern field when the regular expression does not compile."
+    },
     "Not now": {
       "comment": "Alert button that dismisses the missing-permission alert without opening Settings."
     },
     "Nothing here yet": {
       "comment": "Title shown when the history is empty."
     },
+    "Nothing you have copied matches yet. New copies still can.": {
+      "comment": "Status under the pattern field when a valid rule matches nothing stored yet."
+    },
     "Open Settings": {
       "comment": "Alert button that opens System Settings at the Accessibility panel."
+    },
+    "Orange": {
+      "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },
     "Paste": {
       "comment": "Key-hint label for return, which pastes the selected item."
     },
+    "Pattern": {
+      "comment": "Label and placeholder of the tag editor's regular-expression field."
+    },
     "Pin": {
       "comment": "Key-hint label for Command-P, which pins the selected item."
+    },
+    "Pink": {
+      "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },
     "Pinned": {
       "comment": "Accessibility label for the pin badge on a card."
     },
+    "Press ⌘N to make one.": {
+      "comment": "Second line of the empty tag list, naming the shortcut that creates a tag."
+    },
+    "Purple": {
+      "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
+    },
     "Quit": {
       "comment": "Menu bar item that terminates the app."
+    },
+    "Red": {
+      "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
+    },
+    "Sample of matching clippings": {
+      "comment": "VoiceOver label of the three-line preview of what the pattern matches."
+    },
+    "Save": {
+      "comment": "Button in the tag editor that writes the tag, and the ⏎ keycap rail label."
+    },
+    "Save and apply": {
+      "comment": "Button in the retroactive-apply confirmation: save the tag and tag the matches."
     },
     "Search content or app…": {
       "comment": "Placeholder of the search field at the top of the panel."
@@ -74,6 +179,9 @@
     "Tags": {
       "comment": "Sidebar section listing the tags in use."
     },
+    "The tag is saved and added to ^[%lld clipping](inflect: true) already in your history. Corvo has no undo.": {
+      "comment": "Message of the retroactive-apply confirmation. %lld is how many clippings will be tagged."
+    },
     "Try another word, or clear the search.": {
       "comment": "Hint under the 'No matches' title."
     },
@@ -83,7 +191,21 @@
     "Unknown": {
       "comment": "Fallback shown on a card when the source app was not recorded."
     },
+    "Yellow": {
+      "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
+    },
+    "^[%lld clipping](inflect: true) will lose this tag. The clippings themselves stay.": {
+      "comment": "Message of the delete confirmation. %lld is how many clippings carry the tag."
+    },
     "esc": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
+    },
+    "⌘C": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
+    },
+    "⌘N": {
       "comment": "Keycap glyph. Printed on the key itself, never translated.",
       "shouldTranslate": false
     },
@@ -92,6 +214,10 @@
       "shouldTranslate": false
     },
     "⌘T": {
+      "comment": "Keycap glyph. Printed on the key itself, never translated.",
+      "shouldTranslate": false
+    },
+    "⌘⇧T": {
       "comment": "Keycap glyph. Printed on the key itself, never translated.",
       "shouldTranslate": false
     },
