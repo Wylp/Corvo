@@ -1,11 +1,34 @@
-# Corvo
+<div align="center">
 
-Corvo is a clipboard history for macOS that keeps what you copy and shows it
-back to you in a floating panel, organized by the app it came from and by tags
-you define. Press `⌘⇧V`, pick a clipping, press `⏎`, and it lands back in
-whatever you were typing in.
+# 🐦‍⬛ Corvo
 
-It lives in the menu bar, has no Dock icon, and needs macOS 14 or later.
+**A clipboard history for macOS that remembers where things came from.**
+
+Press `⌘⇧V`, pick a clipping, press `⏎`, and it lands back in whatever you were
+typing in.
+
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
+![Swift 6](https://img.shields.io/badge/Swift-6-orange)
+![AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
+
+</div>
+
+---
+
+A corvo is a raven: a bird that hoards small bright things and remembers where
+it put them. The app does the same with your clipboard. It lives in the menu
+bar, has no Dock icon, and never talks to the network.
+
+## What it does
+
+| | |
+| --- | --- |
+| **Keeps everything you copy** | Text, images and files, captured in the background |
+| **Remembers the source app** | Every clipping carries the app it came from, with its icon and brand colour |
+| **Colours code like an editor** | `curl`, JSON and C-family snippets are syntax-highlighted in the card |
+| **Tags that apply themselves** | A tag can carry a regex and/or a source app, and catches matching clippings on its own |
+| **Pastes straight back** | `⏎` returns the clipping to the app you were in, no manual `⌘V` |
+| **Drops secrets on the floor** | Content marked concealed by password managers is never recorded |
 
 ## Install
 
@@ -14,8 +37,8 @@ brew tap Wylp/corvo https://github.com/Wylp/corvo
 brew install --cask corvo
 ```
 
-The cask in this repository is the tap, which is why the `brew tap` line comes
-first — Corvo is not in homebrew/cask.
+The cask lives in this repository, which is why `brew tap` comes first — Corvo
+is not in homebrew/cask.
 
 ### First launch: the build is not notarized
 
@@ -23,78 +46,136 @@ Corvo is ad-hoc signed, not signed with a Developer ID and not notarized by
 Apple. macOS will refuse to open it the first time and say it cannot be
 verified. To open it anyway:
 
-1. Open **System Settings → Privacy & Security**.
-2. Scroll to the security section — there is a line saying "Corvo" was blocked.
-3. Click **Open Anyway** and confirm.
+1. Open **System Settings → Privacy & Security**
+2. Scroll to the security section — there is a line saying "Corvo" was blocked
+3. Click **Open Anyway** and confirm
 
-You only do this once. If you would rather not trust an unnotarized binary,
-build it from source instead (below) — the result is the same app.
+You do this once. If you would rather not trust an unnotarized binary, build it
+from source below — the result is the same app.
 
 ### Accessibility permission
 
 The first time you paste, Corvo tells you the permission is missing and offers
-to open System Settings → Privacy & Security → Accessibility. Switch Corvo on
-there and paste again. It needs the permission to press `⌘V` for you in the app
-you came from; there is no other way for one app to type into another.
+to open **System Settings → Privacy & Security → Accessibility**. Switch Corvo
+on there and paste again.
 
-Without the permission Corvo still works, it just stops one step short: the
-clipping goes onto the clipboard and Corvo tells you so, and you paste it
-yourself with `⌘V`. Everything else — capture, search, tags, pinning — needs no
+It needs the permission to press `⌘V` for you in the app you came from; there is
+no other way for one app to type into another. Without it Corvo still works, it
+just stops one step short: the clipping goes onto your clipboard and Corvo tells
+you so, and you paste it yourself. Capture, search, tags and pinning need no
 permission at all.
-
-## Privacy
-
-**The history is not encrypted.** It is a plain SQLite database at
-`~/Library/Application Support/Corvo/corvo.sqlite`, with copied images stored as
-files next to it in `blobs/`. Anything with read access to your home directory —
-another app you run, a backup, someone at your unlocked machine — can read every
-clipping. Copied *files* are kept by reference: Corvo stores the path, never a
-copy of the contents.
-
-Two things keep secrets out of it:
-
-- **Concealed and transient content is discarded.** Password managers mark what
-  they put on the clipboard with `org.nspasteboard.ConcealedType`; Corvo drops
-  those copies without recording them. Content marked `TransientType` is dropped
-  the same way. This depends on the source app marking it — an app that does not
-  is not covered.
-- **A blocklist of apps.** In Settings you can list bundle identifiers whose
-  clippings are never recorded at all.
-
-Nothing leaves your machine. Corvo has no network code, no account, and no sync.
-
-By default the history keeps 1000 clippings for 30 days, both adjustable in
-Settings. Pinned clippings and clippings carrying at least one tag are exempt:
-they never expire and do not count towards the limit.
 
 ## Keyboard
 
+The panel is a keyboard tool. Every shortcut is printed along its bottom edge,
+so you never have to remember this table.
+
 | Key | Does |
 | --- | --- |
-| `⌘⇧V` | Open the panel (works anywhere) |
-| `←` / `→` | Move through the carousel |
-| `⏎` | Paste the selected clipping into the app you came from |
-| `⌘C` | Copy it to the clipboard and stop there |
+| `⌘⇧V` | Open the panel, from anywhere |
+| `←` `→` | Move through the carousel |
+| `⏎` | Paste into the app you came from |
+| `⌘C` | Copy to the clipboard and stop there |
 | `⌘T` | Tag the selected clipping |
 | `⌘⇧T` | Open the tag manager |
 | `⌘P` | Pin / unpin |
 | `⌘⌫` | Delete the clipping |
 | `Esc` | Close the panel |
 
-Typing goes straight to the search box, which matches both the content and the
-name of the app it came from.
+Typing goes straight to the search box, which matches the clipping's content
+**and** the name of the app it came from — so `slack` finds everything you
+copied out of Slack without touching the sidebar.
 
-## Tags with rules
+## Tags that apply themselves
 
-A tag can carry a rule, and a tag with a rule applies itself. The rule is a
-regular expression matched against the clipping's text, an exact source app, or
-both together — so `^sk-[A-Za-z0-9]{20,}` tags every API key you copy, and a
-source rule alone tags everything from a given app, images included. Rules run
-on capture, and the tag manager can also apply a new rule backwards over the
-history you already have.
+A tag is not just a label. It can carry a **rule**, and a tag with a rule tags
+matching clippings on its own, as they are captured.
 
-Tags are not only labels: a tagged clipping is protected from retention, and the
-sidebar filters by tag and by source app together.
+A rule is a regular expression, a source app, or both together. With both, they
+must both match.
+
+Tagged clippings are also **exempt from retention**: they never expire and do
+not count towards the history limit. Tagging is how you say "keep this".
+
+### Worked example: catching Claude sessions
+
+Say you want every Claude conversation link you copy to be filed on its own,
+whether you copied it from the browser or from a terminal running Claude Code.
+
+Open the panel with `⌘⇧V`, press `⌘⇧T` for the tag manager, then `⌘N` for a new
+tag:
+
+| Field | Value |
+| --- | --- |
+| **Name** | `claude` |
+| **Pattern** | `claude\.ai/(chat\|code)/` |
+| **From app** | *Any app* |
+| **Colour** | whichever you like — it tints the tag in the sidebar |
+
+As you type the pattern, the editor tells you whether it compiles and **how many
+clippings you already have that it would catch**, with a sample. That number is
+the fastest way to know a regex does what you meant, before it is ever saved.
+
+Save it, and from then on every Claude link you copy arrives already tagged.
+Click `claude` in the sidebar to see only those.
+
+If you want the rule applied to the history you already have, use **Apply to
+existing…** — it tells you how many clippings will be tagged and asks first,
+because Corvo has no undo.
+
+### A few more rules worth stealing
+
+| Goal | Pattern | From app |
+| --- | --- | --- |
+| Everything copied out of Figma, images included | *(none)* | Figma |
+| Private keys and certs you copy as files | `\.(pem\|key\|crt)$` | *Any app* |
+| `TODO` and `FIXME` you lift out of code | `\b(TODO\|FIXME)\b` | *Any app* |
+| Git SHAs | `\b[0-9a-f]{7,40}\b` | *Any app* |
+
+A source-only rule ignores text entirely, so it catches images and files from
+that app too. A pattern rule sees the text of a text clipping and the *filename*
+of a file clipping; it never sees an image, so a loose pattern will not swallow
+every screenshot you take.
+
+## Privacy
+
+**The history is not encrypted.** It is a plain SQLite database at
+`~/Library/Application Support/Corvo/corvo.sqlite`, with copied images stored as
+files beside it in `blobs/`. Anything with read access to your home directory —
+another app you run, a backup, someone at your unlocked machine — can read every
+clipping. Decide with that in mind.
+
+Copied *files* are kept by reference: Corvo stores the path, never a copy of the
+contents.
+
+Two things keep secrets out:
+
+- **Concealed and transient content is discarded.** Password managers mark what
+  they put on the clipboard with `org.nspasteboard.ConcealedType`, and Corvo
+  drops those copies without recording them. `TransientType` is dropped the same
+  way. This depends on the source app doing the marking — an app that does not
+  is not covered.
+- **A blocklist of apps.** In Settings, list the bundle identifiers whose
+  clippings are never recorded at all.
+
+Because tagged clippings never expire, think twice before writing a rule that
+tags credentials: it would keep them forever, in a database that is not
+encrypted.
+
+Nothing leaves your machine. Corvo has no network code, no account and no sync.
+
+By default the history keeps **1000 clippings for 30 days**, both adjustable in
+Settings. Pinned and tagged clippings are exempt.
+
+## Not yet
+
+Honest list of what the tag editor exposes or what people ask for, and what is
+not built:
+
+- **"Ask me to name what it catches"** — the toggle is stored, but the prompt
+  that would ask you for a name is not implemented yet.
+- **Sync between machines**, OCR on images, a snippet editor, encryption of the
+  history at rest.
 
 ## Build from source
 
@@ -104,7 +185,8 @@ XcodeGen to build:
 ```sh
 brew install xcodegen
 make build     # Debug build
-make test      # run the test suite
+make test      # the test suite
+make run       # build and launch
 make release   # build/Corvo.zip, the release artifact
 ```
 
@@ -125,9 +207,10 @@ Paste that digest into `Casks/corvo.rb` in place of `:no_check`.
 
 Corvo is written in English. Translations are welcome via
 `Sources/Corvo/Resources/Localizable.xcstrings` — open it in Xcode's String
-Catalog editor. Brazilian Portuguese is already registered and currently empty,
-so a pt-BR machine shows English until someone fills it in.
+Catalog editor. Brazilian Portuguese is registered and currently empty, so a
+pt-BR machine shows English until someone fills it in.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[GNU AGPL-3.0](LICENSE). If you run a modified Corvo as a network service, the
+AGPL requires you to offer your users its source.
