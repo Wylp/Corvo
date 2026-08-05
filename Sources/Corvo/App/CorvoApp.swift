@@ -13,35 +13,31 @@ struct CorvoApp: App {
         MenuBarExtra("Corvo", image: "MenuBarIcon") {
             Button("Show History") { delegate.panel?.show() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
-            SettingsLink { Text("Settings…") }
+            Button("Settings…") { delegate.showSettings() }
                 .keyboardShortcut(",")
             Divider()
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
         }
 
-        Settings {
-            if let env = delegate.env {
-                // The prune is handed over rather than left to the hourly timer:
-                // the user who just confirmed a lower limit should see the
-                // history shrink now, not at some unannounced point within the
-                // next hour.
-                PreferencesView(prefs: env.prefs, onRetentionLowered: env.runPrune)
-            }
-        }
     }
 }
 
-/// `ObservableObject`, and not decoration: the `Settings` scene reads `env`, but
-/// `env` is only built in `applicationDidFinishLaunching` — after SwiftUI has
-/// already evaluated the scene. Without something to observe, that evaluation is
-/// the only one there is and the window stays empty for the life of the process.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
-    @Published private(set) var env: AppEnvironment?
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private(set) var env: AppEnvironment?
     private(set) var panel: PanelController?
     private(set) var model: HistoryModel?
     private var hotkey: GlobalHotkey?
+    private lazy var settings = SettingsWindow { [weak self] in
+        guard let env = self?.env else { return nil }
+        // The prune is handed over rather than left to the hourly timer: the
+        // user who just confirmed a lower limit should see the history shrink
+        // now, not at some unannounced point within the next hour.
+        return AnyView(PreferencesView(prefs: env.prefs, onRetentionLowered: env.runPrune))
+    }
+
+    func showSettings() { settings.show() }
 
     /// True when this process was launched by `xcodebuild test` as the unit
     /// tests' host application, rather than by a person.
