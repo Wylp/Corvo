@@ -221,10 +221,10 @@ the zip and attaches it to the GitHub release. The cask's `sha256` then comes
 from:
 
 ```sh
-shasum -a 256 build/Corvo.zip
+curl -sL https://github.com/Wylp/Corvo/releases/download/v0.1.0/Corvo.zip | shasum -a 256
 ```
 
-Paste that digest into `Casks/corvo.rb` in place of `:no_check`.
+Paste that digest into `Casks/corvo.rb` and bump `version`.
 
 ## Translations
 

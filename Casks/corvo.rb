@@ -2,7 +2,7 @@ cask "corvo" do
   version "0.1.0"
   # Replace with the digest of the published zip once the release exists:
   #   shasum -a 256 build/Corvo.zip
-  sha256 :no_check
+  sha256 "da88d7e9ebabe97511387c24f3dbda509ff0dd69736275f3c4574083e67f5b90"
 
   url "https://github.com/Wylp/Corvo/releases/download/v#{version}/Corvo.zip"
   name "Corvo"
