@@ -4,10 +4,10 @@ cask "corvo" do
   #   shasum -a 256 build/Corvo.zip
   sha256 :no_check
 
-  url "https://github.com/Wylp/corvo/releases/download/v#{version}/Corvo.zip"
+  url "https://github.com/Wylp/Corvo/releases/download/v#{version}/Corvo.zip"
   name "Corvo"
   desc "Clipboard history organized by source app and by tags"
-  homepage "https://github.com/Wylp/corvo"
+  homepage "https://github.com/Wylp/Corvo"
 
   depends_on macos: ">= :sonoma"
 

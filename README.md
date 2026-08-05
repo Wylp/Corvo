@@ -34,7 +34,7 @@ bar, has no Dock icon, and never talks to the network.
 ## Install
 
 ```sh
-brew tap Wylp/corvo https://github.com/Wylp/corvo
+brew tap Wylp/corvo https://github.com/Wylp/Corvo
 brew install --cask corvo
 ```
 
