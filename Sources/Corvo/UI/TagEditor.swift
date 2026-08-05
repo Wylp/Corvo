@@ -65,6 +65,9 @@ struct TagEditor: View {
     /// Set when a write came back `nil`. Without it the screen answers a failed
     /// save by not changing, which is exactly what a successful save looks like.
     @State private var saveFailed = false
+    /// Set when the panel came back with an app whose bundle carries no
+    /// identifier. Silence would look exactly like a cancelled panel.
+    @State private var chooseFailed = false
 
     /// How many matches the sample shows. Three lines answer "did it match what
     /// I meant" without turning the editor into a second history list.
@@ -131,16 +134,38 @@ struct TagEditor: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// The apps in the history sit at the top because they are the likely
+    /// answer, but they are never the whole set: the rule a user most wants is
+    /// for an app they have not copied from yet, and that one is reachable only
+    /// through the panel. The browse row is *inside* the menu because the menu
+    /// is where someone looks when the app they want is not listed.
     private var sourceField: some View {
         VStack(alignment: .leading, spacing: 4) {
             fieldLabel("From app")
             Picker("From app", selection: sourceBinding) {
                 Text("Any app").tag(String?.none)
                 ForEach(sourceChoices) { source in
-                    Text(source.name).tag(String?.some(source.bundleId))
+                    sourceRow(source).tag(String?.some(source.bundleId))
                 }
+                Divider()
+                Text("Choose an app…").tag(String?.some(AppChooser.browseTag))
             }
             .labelsHidden()
+            if chooseFailed {
+                inline("exclamationmark.triangle.fill", .red,
+                       Text("That app carries no identifier, so no rule can name it. Choose another."))
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Icon then name, the same pair the sidebar and the cards use. The icon is
+    /// what makes a menu of apps scannable; the name is what makes it legible
+    /// when the app is gone and there is no icon left to draw.
+    private func sourceRow(_ source: SourceSummary) -> some View {
+        HStack(spacing: 6) {
+            AppIcon.view(forBundleId: source.bundleId)
+            Text(source.name)
         }
     }
 
@@ -267,17 +292,29 @@ struct TagEditor: View {
     }
 
     private var sourceBinding: Binding<String?> {
-        Binding(get: { draft.sourceBundleId }, set: { draft.sourceBundleId = $0 })
+        Binding(get: { draft.sourceBundleId }, set: { choose($0) })
     }
 
-    /// The list comes from apps seen in the history, so a rule whose app has
-    /// gone quiet would find its own value missing and be silently cleared by
-    /// the picker. Keeping the stored id in the list is what stops that.
     private var sourceChoices: [SourceSummary] {
-        let seen = model.sources
-        guard let id = draft.sourceBundleId,
-              !seen.contains(where: { $0.bundleId == id }) else { return seen }
-        return seen + [SourceSummary(bundleId: id, name: id, count: 0)]
+        AppChooser.choices(seen: model.sources, selected: draft.sourceBundleId)
+    }
+
+    /// The browse row arrives here like any other value. Not writing it is what
+    /// snaps the selection back to what it was: the getter can never return it,
+    /// so cancelling the panel — or choosing an app Corvo cannot name — leaves
+    /// the rule exactly as the user found it.
+    private func choose(_ id: String?) {
+        chooseFailed = false
+        guard id == AppChooser.browseTag else {
+            draft.sourceBundleId = id
+            return
+        }
+        guard let url = AppChooser.run() else { return }
+        guard let picked = AppChooser.bundleId(forApplicationAt: url) else {
+            chooseFailed = true
+            return
+        }
+        draft.sourceBundleId = picked
     }
 
     private func matches() -> [ClipItem] {

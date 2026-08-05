@@ -17,7 +17,7 @@ struct FilterSidebar: View {
                                 model.selectedSource = model.selectedSource == source.bundleId
                                     ? nil : source.bundleId
                             } label: {
-                                icon(forBundleId: source.bundleId)
+                                AppIcon.view(forBundleId: source.bundleId)
                                 Text(source.name).lineLimit(1)
                                 Spacer(minLength: 4)
                                 Text(source.count, format: .number)
@@ -80,15 +80,6 @@ struct FilterSidebar: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 8)
             .padding(.bottom, 3)
-    }
-
-    @ViewBuilder
-    private func icon(forBundleId bundleId: String) -> some View {
-        if let icon = AppIcon.image(forBundleId: bundleId) {
-            Image(nsImage: icon).resizable().frame(width: 16, height: 16)
-        } else {
-            Image(systemName: "app.dashed").frame(width: 16).foregroundStyle(.secondary)
-        }
     }
 }
 

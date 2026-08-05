@@ -238,7 +238,7 @@ struct PreferencesView: View {
 
         let existing = Set(Blocklist.parse(blocklistText).accepted)
         let added = picker.urls
-            .compactMap { Bundle(url: $0)?.bundleIdentifier }
+            .compactMap(AppChooser.bundleId(forApplicationAt:))
             .filter { !existing.contains($0) }
         guard !added.isEmpty else { return }
 

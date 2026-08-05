@@ -43,6 +43,15 @@
     "Cancel": {
       "comment": "Button that dismisses the tag sheet without adding anything."
     },
+    "Choose": {
+      "comment": "Confirmation button of that panel. Picks the app for the rule; it does not launch it."
+    },
+    "Choose an app…": {
+      "comment": "Last row of the tag editor's source picker. Opens a panel listing every installed app. The ellipsis says a panel follows."
+    },
+    "Choose the app this rule should match.": {
+      "comment": "Message shown inside the app panel opened from the tag editor."
+    },
     "Close": {
       "comment": "Key-hint label for esc, which closes the panel."
     },
@@ -235,6 +244,9 @@
     },
     "Tags": {
       "comment": "Sidebar section listing the tags in use."
+    },
+    "That app carries no identifier, so no rule can name it. Choose another.": {
+      "comment": "Inline error under the tag editor's source picker when the chosen app bundle has no bundle identifier to key the rule on."
     },
     "The tag is saved and added to ^[%lld clipping](inflect: true) already in your history. Corvo has no undo.": {
       "comment": "Message of the retroactive-apply confirmation. %lld is how many clippings will be tagged."
