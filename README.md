@@ -32,9 +32,10 @@ build it from source instead (below) — the result is the same app.
 
 ### Accessibility permission
 
-macOS asks for Accessibility permission the first time Corvo pastes. It needs
-it to press `⌘V` for you in the app you came from; there is no other way for
-one app to type into another.
+The first time you paste, Corvo tells you the permission is missing and offers
+to open System Settings → Privacy & Security → Accessibility. Switch Corvo on
+there and paste again. It needs the permission to press `⌘V` for you in the app
+you came from; there is no other way for one app to type into another.
 
 Without the permission Corvo still works, it just stops one step short: the
 clipping goes onto the clipboard and Corvo tells you so, and you paste it

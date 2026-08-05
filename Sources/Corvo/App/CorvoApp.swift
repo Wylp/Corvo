@@ -120,6 +120,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: String(localized: "Open Settings"))
         alert.addButton(withTitle: String(localized: "Not now"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        // Ask before opening the panel, and not only for the system prompt: this
+        // is also the call that enrols Corvo in the Accessibility list. Without
+        // it the user arrives at a list the app is not on, and has to know to add
+        // it by hand with "+".
+        Paster.requestPermission()
         Paster.openAccessibilitySettings()
     }
 }
