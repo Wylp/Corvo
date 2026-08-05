@@ -97,10 +97,17 @@ must both match.
 Tagged clippings are also **exempt from retention**: they never expire and do
 not count towards the history limit. Tagging is how you say "keep this".
 
-### Worked example: catching Claude sessions
+### Worked example: naming your Claude Code sessions
 
-Say you want every Claude conversation link you copy to be filed on its own,
-whether you copied it from the browser or from a terminal running Claude Code.
+Resuming a Claude Code session means copying a command with a UUID in it:
+
+```
+claude --resume 550e8400-e29b-41d4-a716-446655440000
+```
+
+The UUID tells you nothing. A week later you have eleven of them and no idea
+which one was the auth refactor. This is the case Corvo's rule tags were built
+for.
 
 Open the panel with `⌘⇧V`, press `⌘⇧T` for the tag manager, then `⌘N` for a new
 tag:
@@ -108,16 +115,21 @@ tag:
 | Field | Value |
 | --- | --- |
 | **Name** | `claude` |
-| **Pattern** | `claude\.ai/(chat\|code)/` |
-| **From app** | *Any app* |
+| **Pattern** | `claude --resume` |
+| **From app** | *Any app* — or your terminal, if you only ever copy it there |
+| **Ask me to name what it catches** | on |
 | **Colour** | whichever you like — it tints the tag in the sidebar |
 
 As you type the pattern, the editor tells you whether it compiles and **how many
 clippings you already have that it would catch**, with a sample. That number is
 the fastest way to know a regex does what you meant, before it is ever saved.
 
-Save it, and from then on every Claude link you copy arrives already tagged.
-Click `claude` in the sidebar to see only those.
+From then on, every resume command you copy arrives already tagged, and Corvo
+asks you what to call it — "auth refactor", "the migration one". The name is
+searchable, so `⌘⇧V` and typing `auth` brings back the command that resumes it.
+
+Because tagged clippings never expire, those sessions stay findable no matter
+how much you copy over them.
 
 If you want the rule applied to the history you already have, use **Apply to
 existing…** — it tells you how many clippings will be tagged and asks first,
@@ -172,8 +184,10 @@ Settings. Pinned and tagged clippings are exempt.
 Honest list of what the tag editor exposes or what people ask for, and what is
 not built:
 
-- **"Ask me to name what it catches"** — the toggle is stored, but the prompt
-  that would ask you for a name is not implemented yet.
+- **"Ask me to name what it catches"** — the toggle is stored and the rule
+  engine already reports which tags asked for it, but the prompt itself is not
+  wired up yet. Until it is, the Claude Code example above tags the command and
+  you name it by hand.
 - **Sync between machines**, OCR on images, a snippet editor, encryption of the
   history at rest.
 
