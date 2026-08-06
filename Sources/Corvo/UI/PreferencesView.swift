@@ -32,6 +32,10 @@ struct PreferencesView: View {
     /// everything. Nothing reaches `prefs` until the field is submitted or left.
     @State private var maxItems: Int
     @State private var maxAgeDays: Int
+    /// The two switches, drafts like the numbers beside them. A rule switched on is
+    /// a cut and has to reach the confirmation before it reaches `prefs`.
+    @State private var limitsItems: Bool
+    @State private var limitsAge: Bool
     @State private var blocklistText: String
     @State private var loginError: String?
     @State private var isConfirmingCut = false
@@ -48,6 +52,8 @@ struct PreferencesView: View {
         self.onRetentionLowered = onRetentionLowered
         _maxItems = State(initialValue: prefs.maxItems)
         _maxAgeDays = State(initialValue: prefs.maxAgeDays)
+        _limitsItems = State(initialValue: prefs.limitsItems)
+        _limitsAge = State(initialValue: prefs.limitsAge)
         _blocklistText = State(initialValue: prefs.blocklist.joined(separator: "\n"))
     }
 
@@ -84,10 +90,38 @@ struct PreferencesView: View {
                 .keyboardShortcut(.defaultAction)
             Button("Delete", role: .destructive) { applyCut() }
         } message: {
+            cutMessage
+        }
+    }
+
+    /// Names the rules that will actually apply, which is now three sentences
+    /// rather than one.
+    ///
+    /// The old message named both rules unconditionally. With a rule switched off
+    /// that would describe a deletion that is not going to happen — and the number
+    /// it quoted would be one the user can see is dimmed on the screen behind the
+    /// alert.
+    ///
+    /// Both-off never gets here: nothing is being cut, so `commitRetention` writes
+    /// it without asking.
+    @ViewBuilder private var cutMessage: some View {
+        if limitsItems, limitsAge {
             Text("""
                 Corvo will keep the newest ^[\(maxItems) clipping](inflect: true) \
                 and delete anything older than ^[\(maxAgeDays) day](inflect: true). \
                 Pinned and tagged clippings are never deleted. Corvo has no undo.
+                """)
+        } else if limitsItems {
+            Text("""
+                Corvo will keep the newest ^[\(maxItems) clipping](inflect: true), \
+                whatever their age. Pinned and tagged clippings are never deleted. \
+                Corvo has no undo.
+                """)
+        } else {
+            Text("""
+                Corvo will delete anything older than \
+                ^[\(maxAgeDays) day](inflect: true), however few are left. Pinned \
+                and tagged clippings are never deleted. Corvo has no undo.
                 """)
         }
     }
@@ -138,15 +172,46 @@ struct PreferencesView: View {
 
     private var history: some View {
         Section("History") {
-            LabeledContent("Keep at most") {
-                numberField("Keep at most", value: $maxItems, field: .items)
-                Text("clippings").foregroundStyle(.secondary)
+            rule("Keep at most", isOn: $limitsItems, value: $maxItems,
+                 field: .items, unit: "clippings")
+            rule("Delete after", isOn: $limitsAge, value: $maxAgeDays,
+                 field: .days, unit: "days")
+
+            if limitsItems || limitsAge {
+                caption("Pinned or tagged clippings never expire, and do not count towards the limit.")
+            } else {
+                // Not a warning glyph: nothing is wrong. It is a consequence, and
+                // the user chose it — they are entitled to a clipboard that keeps
+                // everything, and entitled to know that is what they now have.
+                caption("Nothing is ever deleted. The history grows until you delete clippings yourself.")
             }
-            LabeledContent("Delete after") {
-                numberField("Delete after", value: $maxAgeDays, field: .days)
-                Text("days").foregroundStyle(.secondary)
+        }
+    }
+
+    /// One retention rule: a switch, a number, and the unit the number is in.
+    ///
+    /// The number stays on screen when the rule is off, dimmed and not editable.
+    /// Emptying the field instead would throw away the value the user picked, and
+    /// it is exactly the value that comes back when they switch the rule on again.
+    private func rule(_ label: LocalizedStringKey, isOn: Binding<Bool>,
+                      value: Binding<Int>, field: Field,
+                      unit: LocalizedStringKey) -> some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                numberField(label, value: value, field: field)
+                    .disabled(!isOn.wrappedValue)
+                Text(unit)
+                    .foregroundStyle(.secondary)
+                Toggle(label, isOn: isOn)
+                    .labelsHidden()
+                    // Committed the moment it moves, unlike the number beside it: a
+                    // switch has no half-typed state to protect, and leaving it
+                    // uncommitted would mean the confirmation for switching a rule
+                    // on could arrive long after the click that asked for it.
+                    .onChange(of: isOn.wrappedValue) { _, _ in commitRetention() }
             }
-            caption("Pinned or tagged clippings never expire, and do not count towards the limit.")
+        } label: {
+            Text(label).foregroundStyle(isOn.wrappedValue ? .primary : .secondary)
         }
     }
 
@@ -270,16 +335,31 @@ struct PreferencesView: View {
     private func commitRetention() {
         maxItems = Preferences.clamped(maxItems, to: Preferences.itemLimits)
         maxAgeDays = Preferences.clamped(maxAgeDays, to: Preferences.ageLimits)
-        guard maxItems < prefs.maxItems || maxAgeDays < prefs.maxAgeDays else {
+        guard RetentionEdit.isCut(from: storedRetention, to: draftRetention) else {
             writeRetention()
             return
         }
         isConfirmingCut = true
     }
 
+    /// What is being enforced right now.
+    private var storedRetention: RetentionSettings {
+        RetentionSettings(maxItems: prefs.maxItems, maxAgeDays: prefs.maxAgeDays,
+                          limitsItems: prefs.limitsItems, limitsAge: prefs.limitsAge)
+    }
+
+    /// What the screen is showing, which is not the same thing until it is
+    /// committed.
+    private var draftRetention: RetentionSettings {
+        RetentionSettings(maxItems: maxItems, maxAgeDays: maxAgeDays,
+                          limitsItems: limitsItems, limitsAge: limitsAge)
+    }
+
     private func writeRetention() {
         prefs.maxItems = maxItems
         prefs.maxAgeDays = maxAgeDays
+        prefs.limitsItems = limitsItems
+        prefs.limitsAge = limitsAge
     }
 
     private func applyCut() {
@@ -290,6 +370,8 @@ struct PreferencesView: View {
     private func revertRetention() {
         maxItems = prefs.maxItems
         maxAgeDays = prefs.maxAgeDays
+        limitsItems = prefs.limitsItems
+        limitsAge = prefs.limitsAge
     }
 
     /// A window can be closed with a field still focused and the edit never
@@ -305,7 +387,9 @@ struct PreferencesView: View {
         // would present an unasked-for "Delete clippings now?" the next time
         // the window opens.
         isConfirmingCut = false
-        guard maxItems >= prefs.maxItems, maxAgeDays >= prefs.maxAgeDays else {
+        // The same question `commitRetention` asks, so a rule switched on and left
+        // unconfirmed is dropped exactly like a lowered number is.
+        guard !RetentionEdit.isCut(from: storedRetention, to: draftRetention) else {
             revertRetention()
             return
         }
@@ -314,7 +398,7 @@ struct PreferencesView: View {
         // "unset, falls back to `RetentionPolicy.standard`" into a pinned
         // `1000`/`30` that a future change to the standard policy can never
         // reach.
-        guard maxItems != prefs.maxItems || maxAgeDays != prefs.maxAgeDays else { return }
+        guard draftRetention != storedRetention else { return }
         writeRetention()
     }
 

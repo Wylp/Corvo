@@ -206,7 +206,7 @@ private func addItem(_ repo: ItemRepository, _ text: String,
         try addItem(repo, text)
     }
 
-    let previewed = try tagger.items(matching: tag.rule)
+    let previewed = try tagger.items(matching: tag.rule).items
     #expect(previewed.count == 3)
     #expect(try tagger.applyToExistingItems(tag) == previewed.count)
 
@@ -237,7 +237,7 @@ private func addItem(_ repo: ItemRepository, _ text: String,
 
     let tag = try repo.saveTag(Tag(id: nil, name: "sql", color: nil, pattern: "SELECT"))
     let tagId = try #require(tag.id)
-    #expect(try tagger.items(matching: tag.rule).count == total)
+    #expect(try tagger.items(matching: tag.rule).items.count == total)
     #expect(try tagger.applyToExistingItems(tag) == total)
     #expect(try repo.itemCount(forTag: tagId) == total)
 }
@@ -302,4 +302,71 @@ private func addItem(_ repo: ItemRepository, _ text: String,
 
     #expect(model.saveTag(other) == nil)
     #expect(model.saveTag(Tag(id: nil, name: "fresh", color: nil)) != nil)
+}
+
+// MARK: - 9. The preview when the history has no ceiling
+
+/// With the count rule off there is no retention number to borrow, so the scan
+/// falls back to `previewScanLimit`. A cap can undercount where a ceiling cannot,
+/// and undercounting in silence is the one thing this pair may not do — so the
+/// result says the cap bit, and the editor turns that into "10,000+".
+@MainActor @Test func withNoCeilingThePreviewReportsThatItsScanWasCapped() throws {
+    let (repo, tagger, prefs, dir) = try makeTags()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    prefs.limitsItems = false
+    prefs.limitsAge = false
+
+    // One more row than the cap, all of them matching.
+    try repo.dbQueue.write { db in
+        for i in 0...AutoTagger.previewScanLimit {
+            try db.execute(sql: """
+                INSERT INTO item (kind, text, contentHash, pinned, createdAt)
+                VALUES ('text', ?, ?, 0, ?)
+                """, arguments: ["SELECT \(i)", "hash-\(i)", t0])
+        }
+    }
+
+    let tag = try repo.saveTag(Tag(id: nil, name: "sql", color: nil, pattern: "SELECT"))
+    let previewed = try tagger.items(matching: tag.rule)
+
+    #expect(previewed.items.count == AutoTagger.previewScanLimit)
+    #expect(previewed.hitLimit)
+
+    // The invariant that survives the cap: what the user is asked to confirm is
+    // exactly the set that gets tagged.
+    #expect(try tagger.applyToExistingItems(tag) == previewed.items.count)
+}
+
+/// Under the cap, nothing changes: the count is exact and there is nothing to
+/// warn about.
+@MainActor @Test func withNoCeilingASmallHistoryStillCountsExactly() throws {
+    let (repo, tagger, prefs, dir) = try makeTags()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    prefs.limitsItems = false
+    for text in ["SELECT 1", "SELECT 2", "nothing"] { try addItem(repo, text) }
+
+    let tag = try repo.saveTag(Tag(id: nil, name: "sql", color: nil, pattern: "SELECT"))
+    let previewed = try tagger.items(matching: tag.rule)
+
+    #expect(previewed.items.count == 2)
+    #expect(!previewed.hitLimit)
+}
+
+/// A retention ceiling *is* the whole history, so filling the scan is not a
+/// warning — there is nothing older for it to have missed. Reporting `hitLimit`
+/// here would put "10,000+" on a screen where the count is exact.
+@MainActor @Test func aFullScanUnderARetentionCeilingIsNotFlaggedAsCapped() throws {
+    let (repo, tagger, prefs, dir) = try makeTags()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    prefs.maxItems = 3
+    for text in ["SELECT 1", "SELECT 2", "SELECT 3"] { try addItem(repo, text) }
+
+    let tag = try repo.saveTag(Tag(id: nil, name: "sql", color: nil, pattern: "SELECT"))
+    let previewed = try tagger.items(matching: tag.rule)
+
+    #expect(previewed.items.count == 3)
+    #expect(!previewed.hitLimit)
 }

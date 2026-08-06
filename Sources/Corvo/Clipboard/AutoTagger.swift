@@ -62,32 +62,58 @@ struct AutoTagger {
     /// editor's live preview and the retroactive apply, so the count the user is
     /// asked to confirm is exactly the set that gets tagged.
     ///
-    /// The limit is `prefs.retentionPolicy.maxItems` — the same number
-    /// `AppEnvironment.runPrune` enforces — and not `RetentionPolicy.standard`.
-    /// The user can raise the preference; a limit stuck at the default would
-    /// make the preview undercount and the retroactive apply skip the tail of
-    /// the history in silence, which is the one thing this pair may not do.
+    /// The limit is the retention ceiling when there is one — the same number
+    /// `AppEnvironment.runPrune` enforces, and not `RetentionPolicy.standard`,
+    /// because a limit stuck at the default would make the preview undercount and
+    /// the retroactive apply skip the tail of the history in silence.
+    ///
+    /// The user can now switch that ceiling off, and then there is no number to
+    /// borrow. `previewScanLimit` applies instead, and because a cap can undercount
+    /// where a ceiling cannot, the result carries `hitLimit` so the screen can say
+    /// "10,000+" rather than a number that is wrong. Undercounting is still
+    /// forbidden; undercounting *in silence* is what was forbidden all along.
     ///
     /// ponytail: reads the history and matches in Swift, because the pattern is
-    /// a regex and SQLite carries no `REGEXP` of its own. A scan of `maxItems`
-    /// short rows — a thousand by default, and capped by `Preferences.itemLimits`
-    /// now that the user sets it. Only ever runs from the editor's preview and
+    /// a regex and SQLite carries no `REGEXP` of its own. A scan of at most
+    /// `previewScanLimit` short rows, and only ever from the editor's preview and
     /// the retroactive apply, never from `poll`. Upgrade: register a compiled
-    /// `REGEXP` function on the connection before that cap is raised.
+    /// `REGEXP` function on the connection, which would make this exact and
+    /// unbounded and delete the cap entirely.
     /// The most rows a preview will pull through the regex when the history has no
     /// ceiling to borrow. The same 10,000 `Preferences.itemLimits` calls roughly a
     /// decade of heavy use, stated here because this is where the scan happens.
     ///
     /// A cap can undercount, which is the one thing this pair may not do in
-    /// silence — `TagEditor` says "10,000+" rather than a number when it is hit.
+    /// silence — hence `hitLimit`, which `TagEditor` turns into "10,000+" rather
+    /// than a number that would be wrong.
     static let previewScanLimit = 10_000
 
-    func items(matching rule: TagRule) throws -> [ClipItem] {
-        guard rule.isActive else { return [] }
-        return try repo.search(text: "", sourceBundleId: nil, tagId: nil,
-                               limit: prefs.retentionPolicy.maxItems ?? Self.previewScanLimit)
-            .filter { rule.matches(text: Self.matchable(kind: $0.kind, text: $0.text),
-                                   sourceBundleId: $0.sourceBundleId) }
+    /// What a rule already claims, and whether the scan could see the whole
+    /// history while finding out.
+    struct Matches: Equatable {
+        var items: [ClipItem]
+        /// The scan filled its cap, so there may be older matches it never looked
+        /// at. Only possible with no retention ceiling: when there is one, the
+        /// ceiling *is* the whole history.
+        var hitLimit: Bool
+
+        static let none = Matches(items: [], hitLimit: false)
+    }
+
+    func items(matching rule: TagRule) throws -> Matches {
+        guard rule.isActive else { return .none }
+
+        // With a ceiling, borrow it: it is exactly how many rows can exist, so the
+        // count is exact and `hitLimit` is meaningless. Without one, the cap above
+        // applies and the caller has to be told when it bit.
+        let ceiling = prefs.retentionPolicy.maxItems
+        let limit = ceiling ?? Self.previewScanLimit
+        let scanned = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: limit)
+
+        return Matches(
+            items: scanned.filter { rule.matches(text: Self.matchable(kind: $0.kind, text: $0.text),
+                                                 sourceBundleId: $0.sourceBundleId) },
+            hitLimit: ceiling == nil && scanned.count == limit)
     }
 
     /// Attaches `tag` to every item its rule already matches, and answers how
@@ -100,7 +126,7 @@ struct AutoTagger {
     @discardableResult
     func applyToExistingItems(_ tag: Tag) throws -> Int {
         var added = 0
-        for item in try items(matching: tag.rule) {
+        for item in try items(matching: tag.rule).items {
             guard let id = item.id else { continue }
             if try repo.addTag(named: tag.name, to: id) { added += 1 }
         }
