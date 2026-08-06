@@ -74,10 +74,18 @@ struct AutoTagger {
     /// now that the user sets it. Only ever runs from the editor's preview and
     /// the retroactive apply, never from `poll`. Upgrade: register a compiled
     /// `REGEXP` function on the connection before that cap is raised.
+    /// The most rows a preview will pull through the regex when the history has no
+    /// ceiling to borrow. The same 10,000 `Preferences.itemLimits` calls roughly a
+    /// decade of heavy use, stated here because this is where the scan happens.
+    ///
+    /// A cap can undercount, which is the one thing this pair may not do in
+    /// silence — `TagEditor` says "10,000+" rather than a number when it is hit.
+    static let previewScanLimit = 10_000
+
     func items(matching rule: TagRule) throws -> [ClipItem] {
         guard rule.isActive else { return [] }
         return try repo.search(text: "", sourceBundleId: nil, tagId: nil,
-                               limit: prefs.retentionPolicy.maxItems)
+                               limit: prefs.retentionPolicy.maxItems ?? Self.previewScanLimit)
             .filter { rule.matches(text: Self.matchable(kind: $0.kind, text: $0.text),
                                    sourceBundleId: $0.sourceBundleId) }
     }

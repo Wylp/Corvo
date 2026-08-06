@@ -224,7 +224,7 @@ private func addItem(_ repo: ItemRepository, _ text: String,
     defer { try? FileManager.default.removeItem(at: dir) }
 
     prefs.maxItems = 1_500
-    let total = RetentionPolicy.standard.maxItems + 25
+    let total = RetentionPolicy.defaultMaxItems + 25
     // One transaction: 1025 rows through `insert` would be 1025 of them.
     try repo.dbQueue.write { db in
         for i in 0..<total {

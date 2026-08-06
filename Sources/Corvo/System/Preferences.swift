@@ -42,7 +42,7 @@ final class Preferences {
     var maxItems: Int {
         get {
             let v = defaults.integer(forKey: "maxItems")
-            return v > 0 ? Self.clamped(v, to: Self.itemLimits) : RetentionPolicy.standard.maxItems
+            return v > 0 ? Self.clamped(v, to: Self.itemLimits) : RetentionPolicy.defaultMaxItems
         }
         set { defaults.set(Self.clamped(newValue, to: Self.itemLimits), forKey: "maxItems") }
     }
@@ -50,7 +50,7 @@ final class Preferences {
     var maxAgeDays: Int {
         get {
             let v = defaults.integer(forKey: "maxAgeDays")
-            return v > 0 ? Self.clamped(v, to: Self.ageLimits) : Int(RetentionPolicy.standard.maxAge / 86400)
+            return v > 0 ? Self.clamped(v, to: Self.ageLimits) : RetentionPolicy.defaultMaxAgeDays
         }
         set { defaults.set(Self.clamped(newValue, to: Self.ageLimits), forKey: "maxAgeDays") }
     }
