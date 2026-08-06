@@ -55,8 +55,34 @@ final class Preferences {
         set { defaults.set(Self.clamped(newValue, to: Self.ageLimits), forKey: "maxAgeDays") }
     }
 
+    /// Whether the count rule applies at all. Absent means **true**.
+    ///
+    /// `object(forKey:)` and not `defaults.bool(forKey:)`, and this is the whole
+    /// upgrade story: `bool(forKey:)` answers `false` for a key nobody ever wrote,
+    /// which would switch retention off for every existing user the first time
+    /// they launched a build carrying this — no error, no visible symptom, and a
+    /// database quietly growing without a ceiling. Absent has to mean the
+    /// behaviour they already had.
+    var limitsItems: Bool {
+        get { defaults.object(forKey: "limitsItems") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "limitsItems") }
+    }
+
+    /// Whether the age rule applies at all. Absent means **true**, for the reason
+    /// above.
+    var limitsAge: Bool {
+        get { defaults.object(forKey: "limitsAge") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "limitsAge") }
+    }
+
+    /// The four states the two switches make.
+    ///
+    /// Switching a rule off does not touch its number: the value the user chose is
+    /// still there when they switch it back on, and is still what the dimmed field
+    /// shows in the meantime.
     var retentionPolicy: RetentionPolicy {
-        RetentionPolicy(maxItems: maxItems, maxAge: Double(maxAgeDays) * 86400)
+        RetentionPolicy(maxItems: limitsItems ? maxItems : nil,
+                        maxAge: limitsAge ? Double(maxAgeDays) * 86400 : nil)
     }
 
     static func clamped(_ value: Int, to range: ClosedRange<Int>) -> Int {

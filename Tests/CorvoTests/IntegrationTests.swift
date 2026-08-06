@@ -192,3 +192,54 @@ private func makeEnvironment(_ pb: NSPasteboard) throws
     let items = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 10)
     #expect(items.map(\.text) == ["survived"])
 }
+
+/// The ceiling as the user experiences it: copy past the limit and the history is
+/// already at the limit, with no timer having fired and no prune having been asked
+/// for by hand. This is the whole point of the capture-path sweep.
+@MainActor @Test func theHistoryHoldsItsCeilingAsYouCopy() throws {
+    let pb = privatePasteboard()
+    let (monitor, repo, blobs, dir) = try makeEnvironment(pb)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+    prefs.maxItems = 3
+    prefs.limitsAge = false
+    let retention = Retention(repo: repo, blobs: blobs)
+    monitor.onDidCapture = {
+        try? retention.enforceItemCeiling(policy: prefs.retentionPolicy)
+    }
+
+    for i in 0..<6 {
+        pb.clearContents()
+        pb.setString("clip \(i)", forType: .string)
+        try monitor.poll(now: t0.addingTimeInterval(Double(i)))
+    }
+
+    let items = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(items.count == 3)
+    #expect(items.compactMap(\.text) == ["clip 5", "clip 4", "clip 3"])
+}
+
+/// With the count rule off, the same six copies all stay — the sweep runs and
+/// decides there is nothing to do.
+@MainActor @Test func withNoCeilingTheHistoryKeepsEverythingYouCopy() throws {
+    let pb = privatePasteboard()
+    let (monitor, repo, blobs, dir) = try makeEnvironment(pb)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+    prefs.limitsItems = false
+    prefs.limitsAge = false
+    let retention = Retention(repo: repo, blobs: blobs)
+    monitor.onDidCapture = {
+        try? retention.enforceItemCeiling(policy: prefs.retentionPolicy)
+    }
+
+    for i in 0..<6 {
+        pb.clearContents()
+        pb.setString("clip \(i)", forType: .string)
+        try monitor.poll(now: t0.addingTimeInterval(Double(i)))
+    }
+
+    #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).count == 6)
+}
