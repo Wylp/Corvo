@@ -68,6 +68,9 @@
       "comment": "App name. Never translated.",
       "shouldTranslate": false
     },
+    "Corvo Settings": {
+      "comment": "Title of the Settings window."
+    },
     "Corvo needs Accessibility permission to paste straight into the app you were using. The content is already on your clipboard — paste it with ⌘V.\n\nIf Corvo is already switched on in that list, macOS is holding a permission for an older copy of the app: select Corvo, remove it with the − button, then add it again.": {
       "extractionState": "manual",
       "localizations": {}
@@ -278,6 +281,9 @@
     },
     "The tag is saved and added to ^[%lld clipping](inflect: true) already in your history. Corvo has no undo.": {
       "comment": "Message of the retroactive-apply confirmation. %lld is how many clippings will be tagged."
+    },
+    "This pattern can take hours on some clippings. The cause is almost always a repeat wrapped in another repeat — (a+)+ or (\\s+)+ — where the inner + or * already covers the outer one. Remove the outer repeat.": {
+      "comment": "Status under the pattern field when the regular expression compiles but backtracks catastrophically. It names the shape to look for and what to remove, because \"invalid pattern\" tells someone staring at a regex that compiles nothing they can act on."
     },
     "Try another word, or clear the search.": {
       "comment": "Hint under the 'No matches' title."

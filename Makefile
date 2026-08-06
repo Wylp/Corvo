@@ -22,6 +22,13 @@ release: gen
 	rm -rf build
 	xcodebuild -project Corvo.xcodeproj -scheme Corvo -configuration Release \
 		-derivedDataPath build/dd build
+	@# The debug entitlement makes the process readable by anything running as
+	@# the same user. It shipped in v0.1.0; this fails the build rather than let
+	@# it come back quietly.
+	@codesign -d --entitlements - build/dd/Build/Products/Release/Corvo.app 2>&1 \
+		| grep -q get-task-allow \
+		&& { echo "FATAL: Release carries com.apple.security.get-task-allow"; exit 1; } \
+		|| echo "entitlements: clean"
 	mkdir -p build
 	ditto -c -k --keepParent build/dd/Build/Products/Release/Corvo.app build/Corvo.zip
 	@echo "built: build/Corvo.zip"
