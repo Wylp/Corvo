@@ -46,8 +46,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The prune is handed over rather than left to the hourly timer: the
         // user who just confirmed a lower limit should see the history shrink
         // now, not at some unannounced point within the next hour.
-        return AnyView(PreferencesView(prefs: env.prefs, binder: binder,
-                                       onRetentionLowered: env.runPrune))
+        return AnyView(PreferencesView(
+            prefs: env.prefs,
+            onHotkeyChange: { binder.apply($0) },
+            onRecordingArmed: { armed in armed ? binder.suspend() : binder.resume() },
+            onRetentionLowered: env.runPrune))
     }
 
     func showSettings() { settings.show() }

@@ -142,12 +142,21 @@ written, so a refusal leaves nothing behind to reconcile. The user is never left
 holding a shortcut that does nothing — the same principle as the blocklist
 showing a rejected line by name instead of swallowing it.
 
-`PreferencesView` receives one more injected closure, matching the existing
+`PreferencesView` receives two more injected closures, matching the existing
 `onRetentionLowered`, so the view never imports Carbon:
 
 ```swift
 let onHotkeyChange: @MainActor (Hotkey?) -> Bool   // false = registration refused
+let onRecordingArmed: @MainActor (Bool) -> Void    // take the live shortcut down
 ```
+
+The second is what the suspend-while-recording rule below needs; it is separate
+from the first because arming is not a change to the shortcut and must not be
+able to store one.
+
+The shortcut on screen is the view's own `@State`, seeded from `prefs.hotkey` and
+moved only after `onHotkeyChange` returns `true`. A refused combination therefore
+never appears in the row as though it had been taken.
 
 ### Recording while a shortcut is registered
 

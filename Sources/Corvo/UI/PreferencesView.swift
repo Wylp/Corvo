@@ -20,11 +20,17 @@ import UniformTypeIdentifiers
 struct PreferencesView: View {
     let prefs: Preferences
 
-    /// The live global shortcut. Passed rather than reached for: this is the one
-    /// setting the system can refuse, and the binder is what knows whether it
-    /// did. Three closures for one collaborator would be worse than the
-    /// collaborator — and the view still never sees Carbon.
-    let binder: HotkeyBinder
+    /// Registers the shortcut and reports what the system said. `false` means it
+    /// was refused and nothing changed — this is the only setting in the window
+    /// that can be turned down by something outside the app.
+    let onHotkeyChange: @MainActor (Hotkey?) -> Bool
+
+    /// Called when the recorder arms and disarms, so the live shortcut can come
+    /// down while it is armed. Without it the one combination the user cannot
+    /// record is the one already bound: a Carbon global shortcut is dispatched
+    /// ahead of the app's own key handling, so pressing it would open the panel
+    /// over this window instead of landing in the recorder.
+    let onRecordingArmed: @MainActor (Bool) -> Void
 
     /// Runs the prune. Called once the user has confirmed a lower limit, so the
     /// deletion they were warned about happens while they are still looking at
@@ -48,6 +54,10 @@ struct PreferencesView: View {
     /// Why the last shortcut the user typed was not taken. Cleared by the next
     /// one that is.
     @State private var shortcutRefusal: ShortcutRefusal?
+    /// The shortcut on screen. Seeded from `prefs` and moved only by a change the
+    /// system accepted, which is what keeps a refused one from ever appearing
+    /// here as though it had been taken.
+    @State private var hotkey: Hotkey?
     @FocusState private var focus: Field?
 
     private enum Field { case items, days }
@@ -61,14 +71,18 @@ struct PreferencesView: View {
         case inUse(String, current: String)
     }
 
-    init(prefs: Preferences, binder: HotkeyBinder,
+    init(prefs: Preferences,
+         onHotkeyChange: @escaping @MainActor (Hotkey?) -> Bool = { _ in true },
+         onRecordingArmed: @escaping @MainActor (Bool) -> Void = { _ in },
          onRetentionLowered: @escaping @MainActor () -> Void = {}) {
         self.prefs = prefs
-        self.binder = binder
+        self.onHotkeyChange = onHotkeyChange
+        self.onRecordingArmed = onRecordingArmed
         self.onRetentionLowered = onRetentionLowered
         _maxItems = State(initialValue: prefs.maxItems)
         _maxAgeDays = State(initialValue: prefs.maxAgeDays)
         _blocklistText = State(initialValue: prefs.blocklist.joined(separator: "\n"))
+        _hotkey = State(initialValue: prefs.hotkey)
     }
 
     var body: some View {
@@ -162,16 +176,14 @@ struct PreferencesView: View {
     private var shortcut: some View {
         Section("Shortcut") {
             LabeledContent("Open panel") {
-                HotkeyRecorder(hotkey: binder.current,
-                               onArmedChange: { armed in
-                                   armed ? binder.suspend() : binder.resume()
-                               },
+                HotkeyRecorder(hotkey: hotkey,
+                               onArmedChange: onRecordingArmed,
                                onRecording: record)
             }
             if let shortcutRefusal {
                 notice("exclamationmark.triangle.fill", .orange, refusalText(shortcutRefusal))
             }
-            if binder.current != Hotkey.default {
+            if hotkey != Hotkey.default {
                 // The way back for someone who recorded something they cannot
                 // reach. Without it that is a `defaults delete`, which is not a
                 // thing to ask of anyone.
@@ -196,22 +208,24 @@ struct PreferencesView: View {
         case .cancelled:
             break
         case .cleared:
-            _ = binder.apply(nil)
+            _ = onHotkeyChange(nil)
+            hotkey = nil
             shortcutRefusal = nil
-        case .recorded(let hotkey):
-            guard HotkeyRule.rejection(for: hotkey) == nil else {
-                shortcutRefusal = .needsModifier(hotkey.display)
+        case .recorded(let recorded):
+            guard HotkeyRule.rejection(for: recorded) == nil else {
+                shortcutRefusal = .needsModifier(recorded.display)
                 return
             }
-            // Asking the system before storing anything is what makes the
-            // refusal harmless: on `false` the previous shortcut is still
+            // Asking the system before anything on screen moves is what makes
+            // the refusal harmless: on `false` the previous shortcut is still
             // registered and still stored, and only this sentence changes.
-            guard binder.apply(hotkey) else {
-                shortcutRefusal = .inUse(hotkey.display,
-                                         current: binder.current?.display
+            guard onHotkeyChange(recorded) else {
+                shortcutRefusal = .inUse(recorded.display,
+                                         current: hotkey?.display
                                              ?? String(localized: "no shortcut"))
                 return
             }
+            hotkey = recorded
             shortcutRefusal = nil
         }
     }
