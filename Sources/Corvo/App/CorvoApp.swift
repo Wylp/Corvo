@@ -66,8 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 content: HistoryView(
                     model: model,
                     blobs: env.blobs,
-                    onPaste: { [weak self] item in self?.paste(item) },
-                    onCopy: { [weak self] item in self?.copy(item) }
+                    onPaste: { [weak self] items in self?.paste(items) },
+                    onCopy: { [weak self] items in self?.copy(items) }
                 ),
                 // The panel is hidden, not destroyed, so nothing else would ever
                 // put the sheet away: it would be back on top the next time the
@@ -101,16 +101,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Order matters: the panel has to be out of the way before the previous app
     /// is reactivated, or the ⌘V is delivered to the window that is going away.
-    private func paste(_ item: ClipItem) {
-        guard let env else { return }
+    private func paste(_ items: [ClipItem]) {
+        guard let env, !items.isEmpty else { return }
         panel?.hide()
-        model?.markUsed(item)
-        let outcome = Paster.paste(item, blobs: env.blobs, into: env.tracker.focusedApp)
+        let outcome = Paster.paste(items, blobs: env.blobs, into: env.tracker.focusedApp)
         env.monitor.ignoreCurrentContents()
+        // Stamped after the call and not before it. `lastUsedAt` is meant to
+        // record a clipping the user actually got, and a paste refused for want
+        // of Accessibility would otherwise mark the whole run as used — the
+        // ordering was survivable with one clipping and stops being so with
+        // five.
+        if outcome != .nothingToWrite { items.forEach { model?.markUsed($0) } }
         switch outcome {
         case .pasted: return
         case .noPermission: warnMissingPermission()
         case .nothingToWrite: warnNothingToWrite()
+        case .partial(let pasted, let total): warnPartial(pasted: pasted, of: total)
         }
     }
 
@@ -122,12 +128,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// write. Text would merely dedupe, but an image goes back out as TIFF and
     /// re-encodes to a PNG whose bytes differ from the stored blob — a fresh
     /// hash, a new row and a new blob on every copy.
-    private func copy(_ item: ClipItem) {
-        guard let env else { return }
-        Paster.writeToClipboard(item, blobs: env.blobs)
+    private func copy(_ items: [ClipItem]) {
+        guard let env, !items.isEmpty else { return }
+        let written = Paster.writeToClipboard(items, blobs: env.blobs)
         panel?.hide()
-        model?.markUsed(item)
+        if written > 0 { items.forEach { model?.markUsed($0) } }
         env.monitor.ignoreCurrentContents()
+        // ⌘C loses clippings the same way ⏎ does, and saying so on one path only
+        // would leave the quieter half of the pair silent.
+        if written == 0 { return warnNothingToWrite() }
+        if written < items.count { warnPartial(pasted: written, of: items.count) }
     }
 
     /// The clipping had nothing left to put on the clipboard — a copied file
@@ -140,6 +150,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             The file this clipping points at has been moved or deleted. Corvo \
             keeps a reference to files rather than a copy of them, so there is \
             nothing left to put on the clipboard.
+            """)
+        alert.addButton(withTitle: String(localized: "OK"))
+        alert.runModal()
+    }
+
+    /// Said out loud because the alternative is losing a clipping in silence.
+    /// The panel is already down by the time this is known, so an inline note
+    /// has nowhere to appear — and this is the same class of thing the two
+    /// warnings above exist for: what the user asked for is not what happened.
+    private func warnPartial(pasted: Int, of total: Int) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Pasted \(pasted) of \(total)")
+        alert.informativeText = String(localized: """
+            The clipboard holds one thing at a time, so several clippings go \
+            over joined into one. Images have no text to join, so they are left \
+            out — paste them one at a time.
             """)
         alert.addButton(withTitle: String(localized: "OK"))
         alert.runModal()

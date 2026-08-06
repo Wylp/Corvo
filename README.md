@@ -75,6 +75,8 @@ so you never have to remember this table.
 | --- | --- |
 | `⌘⇧V` | Open the panel, from anywhere |
 | `←` `→` | Move through the carousel |
+| `⇧`-click | Select every clipping between this one and the last |
+| `⇧←` `⇧→` | The same, one clipping at a time |
 | `⏎` | Paste into the app you came from |
 | `⌘C` | Copy to the clipboard and stop there |
 | `⌘R` | Name the selected clipping (empty the field to remove the name) |
@@ -83,6 +85,12 @@ so you never have to remember this table.
 | `⌘P` | Pin / unpin |
 | `⌘⌫` | Delete the clipping |
 | `Esc` | Close the panel |
+
+Hold `⇧` and click to take several clippings at once, from the last one you
+touched to the one you click. `⏎` or `⌘C` then act on all of them: text arrives
+joined by newlines in list order, and a run of files arrives as several files.
+`⇧←` and `⇧→` do the same from the keyboard, and any plain click or bare arrow
+drops the run again.
 
 Typing goes straight to the search box, which matches the clipping's content
 **and** the name of the app it came from — so `slack` finds everything you
