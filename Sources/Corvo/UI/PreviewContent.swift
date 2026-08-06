@@ -16,12 +16,11 @@ struct PreviewPayload {
     /// A clipping can be megabytes; rendering one whole would freeze the app for
     /// exactly as long as it took to lay out. At `.subheadline` monospaced this
     /// budget is roughly seven screenfuls of scrolling, which is more than
-    /// anyone reads in a preview they opened by resting a pointer, and the
-    /// footer says plainly when it was not the whole thing.
+    /// anyone reads in a preview they opened by resting a pointer, and the last
+    /// line of the excerpt says plainly when it was not the whole thing.
     static let characterBudget = 8_000
 
     let item: ClipItem
-    let tags: [Tag]
     /// Highlighted and bounded. `nil` for a clipping that is not text.
     let text: AttributedString?
     /// Of the whole clipping, not of what is shown.
@@ -30,9 +29,14 @@ struct PreviewPayload {
     let image: PreviewImage?
     let fileExists: Bool
 
-    init(item: ClipItem, tags: [Tag], blobs: BlobStore) {
+    /// - Parameter imagePixelBudget: the longest edge, in pixels, that the
+    ///   preview could possibly draw on this screen. Passed in rather than
+    ///   fixed, because the panel is now sized by its content: a constant
+    ///   generous enough for a full-height screenshot on a 5K display would be
+    ///   a needlessly large decode everywhere else, and one small enough to be
+    ///   cheap everywhere else would show that screenshot blurred.
+    init(item: ClipItem, blobs: BlobStore, imagePixelBudget: Int) {
         self.item = item
-        self.tags = tags
 
         let source = item.kind == .text ? (item.text ?? "") : ""
         characterCount = source.count
@@ -43,7 +47,7 @@ struct PreviewPayload {
             : nil
 
         image = item.kind == .image ? item.blobPath.flatMap {
-            PreviewImage.read(blobs.url(for: $0))
+            PreviewImage.read(blobs.url(for: $0), maxPixelSize: imagePixelBudget)
         } : nil
 
         fileExists = item.kind == .file
@@ -62,17 +66,20 @@ struct PreviewPayload {
 /// `CGImageSource` avoids the problem rather than mitigating it: the properties
 /// come from the file's header without decoding a single pixel, and
 /// `kCGImageSourceThumbnailMaxPixelSize` makes ImageIO decode *only* to the size
-/// asked for. The cost is bounded by `maxPixelSize`, not by what is in the file.
+/// asked for. The cost is bounded by the budget, not by what is in the file.
 struct PreviewImage {
-    /// The longest edge decoded, in pixels. Covers the preview's 420pt width on
-    /// a 2× display with headroom, and nothing larger is ever drawn.
-    static let maxPixelSize = 1_200
+    /// The hard ceiling on the longest edge decoded, whatever the caller asks
+    /// for. The caller's budget is derived from a screen, so it is already
+    /// bounded — this is what keeps a future caller, or an absurd display, from
+    /// turning "decode to what you need" back into "decode everything".
+    static let maxPixelSize = 4_096
 
     let image: NSImage
+    /// The file's real dimensions, read from the header. Not the thumbnail's.
     let pixelWidth: Int
     let pixelHeight: Int
 
-    static func read(_ url: URL) -> PreviewImage? {
+    static func read(_ url: URL, maxPixelSize budget: Int) -> PreviewImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
                 as? [CFString: Any],
@@ -83,7 +90,7 @@ struct PreviewImage {
             // Honours the EXIF orientation, so a photo shot sideways is not
             // previewed sideways.
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceThumbnailMaxPixelSize: min(max(budget, 1), maxPixelSize),
         ]
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0,
                                                                   options as CFDictionary)
@@ -95,15 +102,15 @@ struct PreviewImage {
     }
 }
 
-/// The clipping at reading size.
+/// The clipping, larger. Nothing else.
 ///
-/// Deliberately the card's own vocabulary, scaled up rather than restyled: the
-/// same header band carrying the same wash of the source app's colour over the
-/// same 2pt rule, the same monospaced and syntax-coloured content, the same tag
-/// capsules, the same opaque surface. The claim it makes is "this is the card,
-/// closer", so there is no second visual language to learn — and the one thing
-/// it adds is the thing the card had no room for: the measurements, in the
-/// footer.
+/// The card behind it already says where the clipping came from, when, what it
+/// was named and what it was filed under, and it is still on screen. Repeating
+/// any of that here would spend the only thing the preview has to offer — room —
+/// on information the user is already looking at. So there is no header, no
+/// title, no footer and no band of the source app's colour: a hairline, a
+/// corner radius from the card's own family, the window's shadow, and then the
+/// content, edge to edge.
 ///
 /// Opaque, like the card and for a stronger version of the card's reason. This
 /// one is a separate window floating over the desktop rather than over the
@@ -112,11 +119,20 @@ struct PreviewImage {
 struct PreviewContent: View {
     let payload: PreviewPayload?
 
-    private static let radius: CGFloat = 12
+    /// The mat around a picture. `PreviewPanel` adds it to the window's size, so
+    /// the border sits an even distance from the image on all four sides no
+    /// matter what shape the image is — the whole reason the window is sized by
+    /// the image rather than the image fitted into a window.
+    static let imageInset: CGFloat = 6
+
+    /// One step tighter than the card's 10, which is what a larger surface needs
+    /// to read as the same radius.
+    private static let radius: CGFloat = 10
+    private static let padding: CGFloat = 14
 
     var body: some View {
         surface
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Hovering the preview holds it open, which is the only way its text
             // can be scrolled: the pointer has to leave the card to get here.
             .onHover { hovering in
@@ -124,135 +140,71 @@ struct PreviewContent: View {
                 PreviewPanel.shared.keepAlive()
             }
             // Same reason as `ItemCard`: SwiftUI re-resolves a format style
-            // against the environment's locale, so the date needs both.
+            // against the environment's locale, so the counts need both.
             .environment(\.locale, Locale.app)
     }
 
     @ViewBuilder
     private var surface: some View {
         if let payload {
-            VStack(alignment: .leading, spacing: 0) {
-                header(payload)
-                titleRow(payload)
-                content(payload)
-                footer(payload)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(nsColor: .controlBackgroundColor),
-                        in: RoundedRectangle(cornerRadius: Self.radius))
-            .clipShape(RoundedRectangle(cornerRadius: Self.radius))
-            .overlay {
-                RoundedRectangle(cornerRadius: Self.radius)
-                    .strokeBorder(Color.primary.opacity(0.09))
-            }
-        }
-    }
-
-    /// The card's header at the preview's scale, down to the 16% wash and the
-    /// 2pt rule. Nothing here is new; recognising the preview as the same object
-    /// as the card it came from is the point.
-    private func header(_ payload: PreviewPayload) -> some View {
-        let accent = DominantColor.of(bundleId: payload.item.sourceBundleId)
-        return HStack(spacing: 8) {
-            if let icon = AppIcon.image(forBundleId: payload.item.sourceBundleId) {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 18, height: 18)
-                    .accessibilityHidden(true)  // the name next to it already says this
-            }
-            Text(payload.item.sourceName ?? String(localized: "Unknown"))
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            Spacer(minLength: 6)
-            if payload.item.pinned {
-                Image(systemName: "pin.fill")
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
-                    .accessibilityLabel("Pinned")
-            }
-            Text(payload.item.createdAt,
-                 format: .relative(presentation: .numeric).locale(Locale.app))
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .layoutPriority(1)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent?.opacity(0.16) ?? Color.primary.opacity(0.05))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(accent ?? Color.primary.opacity(0.12))
-                .frame(height: 2)
-        }
-    }
-
-    /// Name and tags share one line here, where the card has to stack them. The
-    /// extra 230 points of width is exactly what buys that, and it keeps the row
-    /// reading as one statement: what this is, and what it was filed under.
-    @ViewBuilder
-    private func titleRow(_ payload: PreviewPayload) -> some View {
-        let name = payload.item.label.flatMap { $0.isEmpty ? nil : $0 }
-        if name != nil || !payload.tags.isEmpty {
-            HStack(spacing: 8) {
-                if let name {
-                    // The proportional face against the monospaced content
-                    // below, for the reason the card gives: this is the one line
-                    // a human wrote.
-                    Text(name)
-                        .font(.headline)
-                        .lineLimit(1)
-                    // Only when there is a name to push away from. Without one,
-                    // a lone capsule pinned to the right edge reads as a stray
-                    // badge rather than as a label on the thing below it.
-                    Spacer(minLength: 4)
+            content(payload)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .controlBackgroundColor),
+                            in: RoundedRectangle(cornerRadius: Self.radius))
+                .clipShape(RoundedRectangle(cornerRadius: Self.radius))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Self.radius)
+                        .strokeBorder(Color.primary.opacity(0.12))
                 }
-                ForEach(payload.tags) { tag in
-                    Text(tag.name)
-                        .font(.caption)
-                        .lineLimit(1)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.18), in: Capsule())
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
         }
     }
 
     @ViewBuilder
     private func content(_ payload: PreviewPayload) -> some View {
         switch payload.item.kind {
-        case .text:
-            ScrollView {
-                Text(payload.text ?? AttributedString())
-                    .font(.system(.subheadline, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .image:
-            imageContent(payload)
-        case .file:
-            fileContent(payload)
+        case .text: textContent(payload)
+        case .image: imageContent(payload)
+        case .file: fileContent(payload)
         }
     }
 
+    /// The excerpt, and — only when there was more than the excerpt — one line
+    /// saying so. That line is the last thing in the scroll, not a footer band:
+    /// it is a property of the text, it appears where the text runs out, and a
+    /// clipping that fits says nothing at all.
+    private func textContent(_ payload: PreviewPayload) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(payload.text ?? AttributedString())
+                    .font(.system(.subheadline, design: .monospaced))
+                if payload.isTruncated {
+                    Text("Showing the first \(PreviewPayload.characterBudget) of \(payload.characterCount) characters")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(Self.padding)
+        }
+    }
+
+    /// The window is already the picture's shape, so the picture only has to
+    /// fill it. Capped at its own pixel dimensions in both places — here and in
+    /// the window's size — because `scaledToFit` would happily enlarge a
+    /// 32-pixel icon to fill the screen, and a blurred icon says less than the
+    /// card's thumbnail did.
     @ViewBuilder
     private func imageContent(_ payload: PreviewPayload) -> some View {
         if let image = payload.image {
             Image(nsImage: image.image)
                 .resizable()
-                // Never distorted: the whole picture, at its own aspect ratio,
-                // as large as the box allows.
                 .scaledToFit()
+                .frame(maxWidth: CGFloat(image.pixelWidth),
+                       maxHeight: CGFloat(image.pixelHeight))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(14)
+                .padding(Self.imageInset)
+                .accessibilityLabel("Image, \(image.pixelWidth) by \(image.pixelHeight) pixels")
         }
         if payload.image == nil {
             Label("Image unavailable", systemImage: "photo")
@@ -262,101 +214,48 @@ struct PreviewContent: View {
         }
     }
 
-    /// The card shows a truncated name and dims the whole thing when the file is
-    /// gone. Here there is room for the path in full, which is the answer to the
-    /// question a truncated name raises — *which* one of the four files with
-    /// that name is this.
+    /// The path in full, which is the answer to the question the card's
+    /// truncated name raises — *which* of the four files with that name is this.
+    /// There is nothing else true to say about a file, so nothing else is said.
     private func fileContent(_ payload: PreviewPayload) -> some View {
         let path = payload.item.filePath
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                fileIcon(path: path, exists: payload.fileExists)
+        return HStack(alignment: .top, spacing: 12) {
+            fileIcon(path: path, exists: payload.fileExists)
+            VStack(alignment: .leading, spacing: 4) {
                 Text(payload.item.text ?? "")
                     .font(.headline)
-                    .lineLimit(2)
-            }
-            ScrollView {
+                    .lineLimit(1)
                 Text(path ?? "")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .lineLimit(3)
+                    .truncationMode(.head)
             }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(14)
+        .padding(Self.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .opacity(payload.fileExists ? 1 : 0.6)
     }
 
     /// The file's real icon when there is a file to ask about, and the card's
     /// `doc.questionmark` when there is not — a generic document icon would say
-    /// less than the glyph that means "missing".
+    /// less than the glyph that means "missing". The glyph carries the words as
+    /// its label, so the state survives with colour off and with the screen off.
     @ViewBuilder
     private func fileIcon(path: String?, exists: Bool) -> some View {
         if exists, let path {
             Image(nsImage: NSWorkspace.shared.icon(forFile: path))
                 .resizable()
-                .frame(width: 36, height: 36)
+                .frame(width: 40, height: 40)
                 .accessibilityHidden(true)
         }
         if !exists {
             Image(systemName: "doc.questionmark")
-                .font(.system(size: 30))
-                .foregroundStyle(.secondary)
-                .frame(width: 36, height: 36)
-                .accessibilityHidden(true)
-        }
-    }
-
-    /// The measurements — the facts the card has no room to state.
-    ///
-    /// A card can only show you the clipping; at this size the preview can also
-    /// tell you how big it is, which is the whole reason the feature exists.
-    /// Absent entirely when there is nothing true to say, rather than padded out
-    /// with a line that says everything is fine.
-    @ViewBuilder
-    private func footer(_ payload: PreviewPayload) -> some View {
-        if Self.hasFooter(payload) {
-            Divider()
-            footerLine(payload)
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .padding(.horizontal, 14)
-                .frame(height: 26)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    /// A text clipping always has a length worth stating. A picture has its
-    /// dimensions only if it could be read at all, and a file that is still
-    /// where it was left has nothing to report — silence is the correct answer
-    /// there, not a line saying everything is fine.
-    private static func hasFooter(_ payload: PreviewPayload) -> Bool {
-        switch payload.item.kind {
-        case .text: return true
-        case .image: return payload.image != nil
-        case .file: return !payload.fileExists
-        }
-    }
-
-    @ViewBuilder
-    private func footerLine(_ payload: PreviewPayload) -> some View {
-        switch payload.item.kind {
-        case .text where payload.isTruncated:
-            Text("Showing the first \(PreviewPayload.characterBudget) of \(payload.characterCount) characters")
-        case .text:
-            Text("\(payload.characterCount) characters")
-        case .image:
-            // The one fact a thumbnail cannot carry, and the reason a screenshot
-            // is worth previewing at all.
-            if let image = payload.image {
-                Text("\(image.pixelWidth) × \(image.pixelHeight) pixels")
-            }
-        case .file:
-            // Glyph, colour and words together, so it survives with colour off.
-            Label("This file no longer exists", systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 32))
                 .foregroundStyle(.orange)
+                .frame(width: 40, height: 40)
+                .accessibilityLabel("This file no longer exists")
         }
     }
 }

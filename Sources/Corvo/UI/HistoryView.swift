@@ -74,14 +74,9 @@ struct HistoryView: View {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                             ItemCard(item: item, tags: model.tags(for: item),
                                      isSelected: index == model.selectedIndex, blobs: blobs,
-                                     // The tags are handed over unread: this
-                                     // fires on every pointer movement and
-                                     // `tags(for:)` is a database query, so it
-                                     // runs only if the preview actually opens.
                                      onHover: { midX in
-                                         PreviewPanel.shared.hover(
-                                             item: item, cardMidX: midX, blobs: blobs,
-                                             tags: { model.tags(for: item) })
+                                         PreviewPanel.shared.hover(item: item, cardMidX: midX,
+                                                                   blobs: blobs)
                                      },
                                      onHoverEnd: { PreviewPanel.shared.endHover() })
                                 .id(item.id)
