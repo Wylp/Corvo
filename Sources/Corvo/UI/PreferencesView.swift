@@ -51,25 +51,13 @@ struct PreferencesView: View {
     /// this in another application. Recomputing the body also re-reads
     /// `LoginItem`, which the user can change in the same trip.
     @State private var hasAccessibility = Paster.hasPermission
-    /// Why the last shortcut the user typed was not taken. Cleared by the next
-    /// one that is.
-    @State private var shortcutRefusal: ShortcutRefusal?
-    /// The shortcut on screen. Seeded from `prefs` and moved only by a change the
-    /// system accepted, which is what keeps a refused one from ever appearing
-    /// here as though it had been taken.
-    @State private var hotkey: Hotkey?
+    /// The shortcut row: what it shows, and why the last attempt did not take.
+    /// Seeded from `prefs` and moved only by `ShortcutEditor`, which is where the
+    /// rule about refused shortcuts lives and where it is tested.
+    @State private var shortcutState: ShortcutState
     @FocusState private var focus: Field?
 
     private enum Field { case items, days }
-
-    /// Both cases name the combination they are about, because by the time this
-    /// is on screen the recorder has gone back to showing the shortcut that is
-    /// still bound — so the sentence is the only place left that says what was
-    /// refused.
-    private enum ShortcutRefusal: Equatable {
-        case needsModifier(String)
-        case inUse(String, current: String)
-    }
 
     init(prefs: Preferences,
          onHotkeyChange: @escaping @MainActor (Hotkey?) -> Bool = { _ in true },
@@ -82,7 +70,7 @@ struct PreferencesView: View {
         _maxItems = State(initialValue: prefs.maxItems)
         _maxAgeDays = State(initialValue: prefs.maxAgeDays)
         _blocklistText = State(initialValue: prefs.blocklist.joined(separator: "\n"))
-        _hotkey = State(initialValue: prefs.hotkey)
+        _shortcutState = State(initialValue: ShortcutState(hotkey: prefs.hotkey))
     }
 
     var body: some View {
@@ -176,14 +164,14 @@ struct PreferencesView: View {
     private var shortcut: some View {
         Section("Shortcut") {
             LabeledContent("Open panel") {
-                HotkeyRecorder(hotkey: hotkey,
+                HotkeyRecorder(hotkey: shortcutState.hotkey,
                                onArmedChange: onRecordingArmed,
                                onRecording: record)
             }
-            if let shortcutRefusal {
-                notice("exclamationmark.triangle.fill", .orange, refusalText(shortcutRefusal))
+            if let refusal = shortcutState.refusal {
+                notice("exclamationmark.triangle.fill", .orange, refusalText(refusal))
             }
-            if hotkey != Hotkey.default {
+            if shortcutState.hotkey != Hotkey.default {
                 // The way back for someone who recorded something they cannot
                 // reach. Without it that is a `defaults delete`, which is not a
                 // thing to ask of anyone.
@@ -204,38 +192,21 @@ struct PreferencesView: View {
     /// `⌘⇧V` is not something `HotkeyRule` would let through, and the recorder
     /// only reports a whole key press.
     private func record(_ recording: HotkeyRecording) {
-        switch recording {
-        case .cancelled:
-            break
-        case .cleared:
-            _ = onHotkeyChange(nil)
-            hotkey = nil
-            shortcutRefusal = nil
-        case .recorded(let recorded):
-            guard HotkeyRule.rejection(for: recorded) == nil else {
-                shortcutRefusal = .needsModifier(recorded.display)
-                return
-            }
-            // Asking the system before anything on screen moves is what makes
-            // the refusal harmless: on `false` the previous shortcut is still
-            // registered and still stored, and only this sentence changes.
-            guard onHotkeyChange(recorded) else {
-                shortcutRefusal = .inUse(recorded.display,
-                                         current: hotkey?.display
-                                             ?? String(localized: "no shortcut"))
-                return
-            }
-            hotkey = recorded
-            shortcutRefusal = nil
-        }
+        shortcutState = ShortcutEditor.apply(recording, to: shortcutState,
+                                             register: onHotkeyChange)
     }
 
+    /// The only part of the refusal that belongs to the screen: its wording.
     private func refusalText(_ refusal: ShortcutRefusal) -> Text {
         switch refusal {
-        case .needsModifier(let combo):
-            Text("\(combo) needs ⌘, ⌥ or ⌃ — otherwise it would be swallowed everywhere.")
-        case .inUse(let combo, let current):
-            Text("\(combo) is in use by another app. Still using \(current).")
+        case .needsModifier(let hotkey):
+            Text("\(hotkey.display) needs ⌘, ⌥ or ⌃ — otherwise it would be swallowed everywhere.")
+        case .inUse(let hotkey, let current):
+            if let current {
+                Text("\(hotkey.display) is in use by another app. Still using \(current.display).")
+            } else {
+                Text("\(hotkey.display) is in use by another app. Still no shortcut.")
+            }
         }
     }
 

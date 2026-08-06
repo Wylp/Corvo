@@ -11,6 +11,8 @@ private func makePrefs() -> Preferences {
 
 private let cmdShiftV = Hotkey(keyCode: UInt32(kVK_ANSI_V),
                                modifiers: UInt32(cmdKey | shiftKey))
+/// How a person types a capital V, and the shortcut Corvo must never register.
+private let shiftOnlyV = Hotkey(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(shiftKey))
 
 // MARK: - How a shortcut reads
 
@@ -178,6 +180,114 @@ private final class StubRegistrar: HotkeyRegistering {
     #expect(prefs.hotkey == nil)
     #expect(registrar.registered == nil)
     #expect(binder.isRegistered == false)
+}
+
+// MARK: - What a turn at the recorder does to the row
+
+/// Records what the screen asked the system, so a test can assert on the thing
+/// that must not happen: asking at all for a shortcut Corvo would not keep.
+private final class RegisterSpy {
+    var asked: [Hotkey?] = []
+    var refuse = false
+
+    func register(_ hotkey: Hotkey?) -> Bool {
+        asked.append(hotkey)
+        return hotkey == nil ? true : !refuse
+    }
+}
+
+private let ctrlOptC = Hotkey(keyCode: UInt32(kVK_ANSI_C),
+                              modifiers: UInt32(controlKey | optionKey))
+
+@Test func escapeLeavesTheRowExactlyAsItWas() {
+    let spy = RegisterSpy()
+    let before = ShortcutState(hotkey: cmdShiftV, refusal: .needsModifier(shiftOnlyV))
+
+    let after = ShortcutEditor.apply(.cancelled, to: before, register: spy.register)
+
+    #expect(after == before)
+    // Escape must not reach the system either: cancelling is not a change.
+    #expect(spy.asked.isEmpty)
+}
+
+@Test func anAcceptedShortcutMovesTheRowAndClearsTheLastComplaint() {
+    let spy = RegisterSpy()
+    let before = ShortcutState(hotkey: cmdShiftV, refusal: .needsModifier(shiftOnlyV))
+
+    let after = ShortcutEditor.apply(.recorded(ctrlOptC), to: before, register: spy.register)
+
+    #expect(after.hotkey == ctrlOptC)
+    #expect(after.refusal == nil)
+    #expect(spy.asked == [ctrlOptC])
+}
+
+/// The rule the refactor moved out of `HotkeyBinder` and into the row: a
+/// refused shortcut must not appear as though it had been taken. Without this,
+/// setting the row before checking the answer looks and tests fine right up
+/// until another app holds the combination.
+@Test func aRefusedShortcutLeavesTheRowOnTheShortcutThatStillWorks() {
+    let spy = RegisterSpy()
+    spy.refuse = true
+
+    let after = ShortcutEditor.apply(.recorded(ctrlOptC),
+                                     to: ShortcutState(hotkey: cmdShiftV),
+                                     register: spy.register)
+
+    #expect(after.hotkey == cmdShiftV)
+    #expect(after.refusal == .inUse(ctrlOptC, current: cmdShiftV))
+}
+
+/// Refused while the user had already cleared the shortcut. The sentence has to
+/// be able to say "still no shortcut" rather than name one that does not exist.
+@Test func aRefusedShortcutNamesNoCurrentOneWhenThereWasNone() {
+    let spy = RegisterSpy()
+    spy.refuse = true
+
+    let after = ShortcutEditor.apply(.recorded(ctrlOptC),
+                                     to: ShortcutState(hotkey: nil),
+                                     register: spy.register)
+
+    #expect(after.hotkey == nil)
+    #expect(after.refusal == .inUse(ctrlOptC, current: nil))
+}
+
+/// A shortcut `HotkeyRule` has already ruled out is never put to the system.
+/// Registering it might well succeed — that is the problem — and the row would
+/// then be showing a shortcut that swallows a letter in every app.
+@Test func aShortcutWithoutARealModifierIsNeverEvenAttempted() {
+    let spy = RegisterSpy()
+
+    let after = ShortcutEditor.apply(.recorded(shiftOnlyV),
+                                     to: ShortcutState(hotkey: cmdShiftV),
+                                     register: spy.register)
+
+    #expect(spy.asked.isEmpty)
+    #expect(after.hotkey == cmdShiftV)
+    #expect(after.refusal == .needsModifier(shiftOnlyV))
+}
+
+@Test func clearingTheRowUnregistersAndSaysNothingIsWrong() {
+    let spy = RegisterSpy()
+    let before = ShortcutState(hotkey: cmdShiftV, refusal: .needsModifier(shiftOnlyV))
+
+    let after = ShortcutEditor.apply(.cleared, to: before, register: spy.register)
+
+    #expect(after == ShortcutState(hotkey: nil))
+    #expect(spy.asked == [nil])
+}
+
+/// "Reset to ⌘⇧V" is the same path as recording it by hand — including being
+/// refusable, on a machine where another app holds the default.
+@Test func resettingToTheDefaultGoesThroughTheSameRefusal() {
+    let spy = RegisterSpy()
+    spy.refuse = true
+
+    let after = ShortcutEditor.apply(.recorded(.default),
+                                     to: ShortcutState(hotkey: ctrlOptC),
+                                     register: spy.register)
+
+    #expect(after.hotkey == ctrlOptC)
+    #expect(after.refusal == .inUse(.default, current: ctrlOptC))
 }
 
 /// Registering for real, twice, through the Carbon path rather than the stub.
