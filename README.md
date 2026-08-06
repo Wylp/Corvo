@@ -105,7 +105,8 @@ A rule is a regular expression, a source app, or both together. With both, they
 must both match.
 
 Tagged clippings are also **exempt from retention**: they never expire and do
-not count towards the history limit. Tagging is how you say "keep this".
+not count towards the history limit. So are clippings you have named with `⌘R`.
+Tagging or naming is how you say "keep this".
 
 ### Worked example: naming your Claude Code sessions
 
@@ -198,7 +199,7 @@ encrypted.
 Nothing leaves your machine. Corvo has no network code, no account and no sync.
 
 By default the history keeps **1000 clippings for 30 days**, both adjustable in
-Settings. Pinned and tagged clippings are exempt.
+Settings. Pinned, tagged and named clippings are exempt.
 
 ## Not yet
 

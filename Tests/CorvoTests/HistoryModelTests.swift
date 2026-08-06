@@ -100,3 +100,165 @@ private func textItem(_ s: String) -> CapturedItem {
     model.selectedTag = tagId
     #expect(model.items.map(\.text) == ["a"])
 }
+
+/// The three things the sheet's list has to get right, and the reason it exists
+/// is the middle one: the whole point of offering the tags is that reaching one
+/// must not depend on remembering how it was capitalised.
+@MainActor @Test func theTagsOfferedAreTheOnesThisClippingCouldStillTake() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let id = try repo.insert(textItem("a"), source: nil, now: t0)
+    try repo.addTag(named: "Work", to: id)
+    try repo.addTag(named: "Receipts", to: id)
+    try repo.addTag(named: "Personal", to: try repo.insert(textItem("b"), source: nil,
+                                                           now: t0.addingTimeInterval(1)))
+    model.reload()
+    let item = try #require(model.items.first { $0.text == "a" })
+
+    // Nothing typed: everything the clipping does not already carry.
+    #expect(model.tagChoices(for: item, matching: "").map(\.name) == ["Personal"])
+
+    // A tag it does not carry, reached without matching the capitals.
+    #expect(model.tagChoices(for: item, matching: "pers").map(\.name) == ["Personal"])
+
+    // A tag it already carries is not offered a second time.
+    #expect(model.tagChoices(for: item, matching: "work").isEmpty)
+}
+
+/// The tag filed under most comes first, because that is the one likely to be
+/// wanted again. Name settles ties so the order does not move between openings.
+@MainActor @Test func theTagsOfferedComeMostUsedFirst() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let a = try repo.insert(textItem("a"), source: nil, now: t0)
+    let b = try repo.insert(textItem("b"), source: nil, now: t0.addingTimeInterval(1))
+    let bare = try repo.insert(textItem("c"), source: nil, now: t0.addingTimeInterval(2))
+    // "zebra" on two, "alpha" on one, "never" on none.
+    try repo.addTag(named: "zebra", to: a)
+    try repo.addTag(named: "zebra", to: b)
+    try repo.addTag(named: "alpha", to: a)
+    try repo.saveTag(Tag(id: nil, name: "never", color: nil))
+    model.reload()
+    let item = try #require(model.items.first { $0.id == bare })
+
+    // Alphabetical order would have put this exactly backwards.
+    #expect(model.tagChoices(for: item, matching: "").map(\.name) == ["zebra", "alpha", "never"])
+}
+
+/// ↑/↓ in the tag sheet. `nil` is the field, and getting back to it is what
+/// keeps ⏎ able to mean "make the tag I just typed".
+@Test func theHighlightEntersTheListAndComesBackOutTheTop() {
+    // From the field: ↓ takes the top, ↑ takes the bottom.
+    #expect(HistoryModel.highlight(nil, step: 1, count: 3) == 0)
+    #expect(HistoryModel.highlight(nil, step: -1, count: 3) == 2)
+    // Off the top is the field again; off the bottom stays put rather than wrapping.
+    #expect(HistoryModel.highlight(0, step: -1, count: 3) == nil)
+    #expect(HistoryModel.highlight(2, step: 1, count: 3) == 2)
+    #expect(HistoryModel.highlight(1, step: 1, count: 3) == 2)
+    // Nothing to walk.
+    #expect(HistoryModel.highlight(nil, step: 1, count: 0) == nil)
+}
+
+/// Taking a tag off one clipping leaves the tag itself, and every other
+/// clipping's link to it, alone. The destructive one is `deleteTag`.
+@MainActor @Test func removingATagFromAClippingKeepsTheTagAndTheOtherClippings() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let a = try repo.insert(textItem("a"), source: nil, now: t0)
+    let b = try repo.insert(textItem("b"), source: nil, now: t0.addingTimeInterval(1))
+    try repo.addTag(named: "shared", to: a)
+    try repo.addTag(named: "shared", to: b)
+    model.reload()
+    let item = try #require(model.items.first { $0.id == a })
+    let tag = try #require(model.tags.first)
+
+    model.removeTag(tag, from: item)
+
+    #expect(try repo.tags(forItem: a).isEmpty)
+    #expect(try repo.tags(forItem: b).map(\.name) == ["shared"])
+    #expect(model.tags.map(\.name) == ["shared"])
+    // And it is offered again, which is the way back from a removal by mistake.
+    #expect(model.tagChoices(for: model.items.first { $0.id == a }, matching: "")
+        .map(\.name) == ["shared"])
+}
+
+/// ⌘↑/⌘↓ down the sidebar. The two lists it draws are one column to the
+/// keyboard, with "everything" at the top and the tags after the apps.
+@MainActor @Test func theFilterCursorWalksTheAppsThenTheTags() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let warp = ItemSource(bundleId: "dev.warp.Warp-Stable", name: "Warp")
+    let tagged = try repo.insert(textItem("a"), source: warp, now: t0)
+    try repo.addTag(named: "keep", to: tagged)
+    model.reload()
+    let tagId = try #require(model.tags.first?.id)
+
+    #expect(model.activeFilter == .everything)
+    model.moveFilter(1)
+    #expect(model.activeFilter == .source(warp.bundleId))
+    model.moveFilter(1)
+    #expect(model.activeFilter == .tag(tagId))
+    // The end of the column, not the top of it again.
+    model.moveFilter(1)
+    #expect(model.activeFilter == .tag(tagId))
+
+    // Landing on a row clears the other filter, because the cursor is one place.
+    #expect(model.selectedSource == nil)
+    model.moveFilter(-1)
+    #expect(model.selectedTag == nil)
+    #expect(model.activeFilter == .source(warp.bundleId))
+    model.moveFilter(-1)
+    #expect(model.activeFilter == .everything)
+    model.moveFilter(-1)
+    #expect(model.activeFilter == .everything)
+}
+
+/// The sheet acts on the selection, so both of its halves have to. A row that
+/// reached one clipping while typing the same name reached five would be the
+/// sheet contradicting itself.
+@MainActor @Test func takingAndRemovingAnOfferedTagReachTheWholeRun() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for (i, text) in ["a", "b", "c"].enumerated() {
+        try repo.insert(textItem(text), source: nil, now: t0.addingTimeInterval(Double(i)))
+    }
+    try repo.addTag(named: "Work", to: try repo.insert(textItem("other"), source: nil,
+                                                       now: t0.addingTimeInterval(9)))
+    model.reload()
+    model.select(1)
+    model.extendSelection(2)          // three clippings, none of them "other"
+    #expect(model.selectedItems.count == 3)
+
+    let offered = try #require(model.tagChoices(for: model.selectedItems, matching: "wor").first)
+    model.addTag(offered.name, to: model.selectedItems)
+    #expect(model.selectedItems.allSatisfy { model.tags(for: $0).map(\.name) == ["Work"] })
+    #expect(model.tags.map(\.name) == ["Work"])   // one tag row, not four
+
+    model.removeTag(offered, from: model.selectedItems)
+    #expect(model.selectedItems.allSatisfy { model.tags(for: $0).isEmpty })
+    #expect(model.tags.map(\.name) == ["Work"])   // the tag itself survives
+}
+
+/// A tag on part of the run stays offered, because it is the row that finishes
+/// the job; only one carried by all of them moves to the removable list.
+@MainActor @Test func aTagOnPartOfTheRunIsStillOffered() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let a = try repo.insert(textItem("a"), source: nil, now: t0)
+    let b = try repo.insert(textItem("b"), source: nil, now: t0.addingTimeInterval(1))
+    try repo.addTag(named: "half", to: a)
+    try repo.addTag(named: "both", to: a)
+    try repo.addTag(named: "both", to: b)
+    model.reload()
+    model.select(0)
+    model.extendSelection(1)
+
+    #expect(model.tagChoices(for: model.selectedItems, matching: "").map(\.name) == ["half"])
+    #expect(model.tagsOnAll(model.selectedItems) == ["both"])
+}

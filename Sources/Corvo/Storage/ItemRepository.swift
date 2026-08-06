@@ -133,6 +133,21 @@ final class ItemRepository {
         }
     }
 
+    /// How many clippings carry each tag, by tag id. A tag on nothing is absent
+    /// rather than zero — the one caller sorts by this and reads a missing key
+    /// as none, so a row per unused tag would be work for no answer.
+    ///
+    /// ponytail: count, not recency. Ordering by "the tag you reached for last"
+    /// would be the better answer and it cannot be had from here: `itemTag` is
+    /// two foreign keys and no timestamp, so there is nothing recording *when* a
+    /// clipping was tagged. That is a migration, not a query.
+    func tagUsage() throws -> [Int64: Int] {
+        try dbQueue.read { db in
+            try Row.fetchAll(db, sql: "SELECT tagId, COUNT(*) AS n FROM itemTag GROUP BY tagId")
+                .reduce(into: [:]) { counts, row in counts[row["tagId"]] = row["n"] }
+        }
+    }
+
     func tags(forItem id: Int64) throws -> [Tag] {
         try dbQueue.read { db in
             try Tag.fetchAll(db, sql: """

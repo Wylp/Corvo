@@ -40,6 +40,9 @@ final class HistoryModel {
     private(set) var items: [ClipItem] = []
     private(set) var sources: [SourceSummary] = []
     private(set) var tags: [Tag] = []
+    /// Read only by `tagChoices`, refreshed with everything else so the order
+    /// the sheet offers keeps up with the tagging done through it.
+    private var tagUsage: [Int64: Int] = [:]
     var selectedIndex: Int = 0
 
     var selectedItem: ClipItem? {
@@ -85,6 +88,12 @@ final class HistoryModel {
                                   tagId: selectedTag, limit: 200)) ?? []
         sources = (try? repo.sources()) ?? []
         tags = (try? repo.allTags()) ?? []
+        // Through `attempt` like every other write on this screen, and not a
+        // bare `try?`. The fallback is not a crash, which is exactly what makes
+        // it worth reporting: an empty map silently reorders the list this
+        // change exists to provide, alphabetically instead of by use, with
+        // nothing anywhere saying why.
+        tagUsage = Self.attempt("tagUsage") { try repo.tagUsage() } ?? [:]
         selectedIndex = min(selectedIndex, max(items.count - 1, 0))
         if items.isEmpty { selectedIndex = 0 }
         // A run survives the poller, but only for clippings still in the list: a
@@ -178,6 +187,138 @@ final class HistoryModel {
         return (try? repo.tags(forItem: id)) ?? []
     }
 
+    // MARK: - Walking the sidebar
+
+    /// One position in the sidebar. The sidebar draws two lists and the two
+    /// filters they set can both be on at once, but a cursor is one place, so
+    /// the keyboard sees them as a single column with "everything" at the top.
+    enum Filter: Equatable {
+        case everything
+        case source(String)
+        case tag(Int64)
+    }
+
+    /// The column ⌘↑/⌘↓ walks, in the order the sidebar draws it.
+    private var filters: [Filter] {
+        [.everything]
+            + sources.map { Filter.source($0.bundleId) }
+            + tags.compactMap { $0.id.map(Filter.tag) }
+    }
+
+    /// Where the cursor is now.
+    ///
+    /// Tag before source when the mouse has set both, because there is no third
+    /// answer and one had to be chosen: the tag is the filter a person put there
+    /// on purpose, the source is often just where the clipping happened to come
+    /// from.
+    var activeFilter: Filter {
+        if let selectedTag { return .tag(selectedTag) }
+        if let selectedSource { return .source(selectedSource) }
+        return .everything
+    }
+
+    /// ⌘↑ / ⌘↓ through the sidebar.
+    ///
+    /// It clamps rather than wrapping, for the reason the tag sheet's highlight
+    /// does: an arrow held down should come to rest at the end of the column,
+    /// not reappear at the other end of it.
+    func moveFilter(_ step: Int) {
+        let column = filters
+        let here = column.firstIndex(of: activeFilter) ?? 0
+        apply(column[min(max(here + step, 0), column.count - 1)])
+    }
+
+    /// Landing on a row sets that filter and clears the other, because the
+    /// cursor is in one place and the sidebar should show what the cursor says.
+    /// Combining a source *and* a tag stays possible — it is just something only
+    /// the mouse can ask for, since two positions cannot be walked with one
+    /// pair of keys.
+    private func apply(_ filter: Filter) {
+        switch filter {
+        case .everything:
+            selectedSource = nil
+            selectedTag = nil
+        case .source(let bundleId):
+            selectedTag = nil
+            selectedSource = bundleId
+        case .tag(let id):
+            selectedSource = nil
+            selectedTag = id
+        }
+    }
+
+    /// The tags `item` could still be given, narrowed by what has been typed so
+    /// far.
+    ///
+    /// Lives here rather than in the sheet because it is the decision the sheet
+    /// exists to make, and a `View` is the one place it could not be tested.
+    /// Matching is case-insensitive and anywhere in the name: the field is being
+    /// used to *find* a tag, and the person typing it does not know how the tag
+    /// was capitalised when it was made.
+    ///
+    /// Ordered by how many clippings already carry the tag, because the tag
+    /// filed under most is the one most likely to be wanted again, and a list
+    /// sorted by name puts that answer wherever the alphabet happens to leave
+    /// it. Name breaks the tie, so equally used tags do not swap places between
+    /// two openings of the same sheet.
+    func tagChoices(for item: ClipItem?, matching query: String) -> [Tag] {
+        tagChoices(for: [item].compactMap { $0 }, matching: query)
+    }
+
+    /// The same question for a ⇧-extended run.
+    ///
+    /// A tag is dropped from the list only when *every* clipping in the run
+    /// already carries it. Hiding one that some of them carry would be hiding
+    /// the very row that finishes the job: the reason to tag a run at once is to
+    /// make it uniform, and a tag on four of five is exactly the case that needs
+    /// the fifth.
+    func tagChoices(for items: [ClipItem], matching query: String) -> [Tag] {
+        let taken = tagsOnAll(items)
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return tags.filter { tag in
+            !taken.contains(tag.name)
+                && (typed.isEmpty || tag.name.localizedCaseInsensitiveContains(typed))
+        }
+        .sorted { a, b in
+            let (ua, ub) = (usage(a), usage(b))
+            return ua == ub ? a.name.localizedStandardCompare(b.name) == .orderedAscending : ua > ub
+        }
+    }
+
+    private func usage(_ tag: Tag) -> Int { tag.id.flatMap { tagUsage[$0] } ?? 0 }
+
+    /// The tag names every one of `items` carries. Empty for an empty selection.
+    ///
+    /// The intersection and not the union, so the sheet's two lists are exact
+    /// complements: a tag is either on the whole selection, and therefore
+    /// removable from it, or it is still offerable to it. A tag on some of the
+    /// run would otherwise have to appear in both at once.
+    func tagsOnAll(_ items: [ClipItem]) -> Set<String> {
+        let carried = items.map { Set(tags(for: $0).map(\.name)) }
+        return carried.dropFirst().reduce(carried.first ?? []) { $0.intersection($1) }
+    }
+
+    /// Where ↑/↓ lands in the sheet's list of tags, or `nil` for "in the field,
+    /// not in the list".
+    ///
+    /// `nil` is a real position and not an absence: it is what makes ⏎ mean
+    /// *make the tag I typed* rather than *take the one that happens to be
+    /// first*. So ↑ off the top goes back to it, which is the way back to typing
+    /// — and ↓ from it enters the list at the top, ↑ from it at the bottom,
+    /// the way a menu opens either way in this platform.
+    ///
+    /// It clamps and never wraps: an arrow held down should stop at the end of a
+    /// list, not reappear at the other end of one the user cannot see all of.
+    /// `nonisolated` because it reads nothing: it is arithmetic on the three
+    /// numbers it is handed, which is also what lets it be tested without a
+    /// model.
+    nonisolated static func highlight(_ current: Int?, step: Int, count: Int) -> Int? {
+        guard count > 0 else { return nil }
+        guard let current else { return step > 0 ? 0 : count - 1 }
+        if current == 0 && step < 0 { return nil }
+        return min(max(current + step, 0), count - 1)
+    }
+
     func addTag(_ name: String, to item: ClipItem) {
         addTag(name, to: [item])
     }
@@ -198,6 +339,24 @@ final class HistoryModel {
     func addTag(_ name: String, to items: [ClipItem]) {
         for id in items.compactMap(\.id) {
             Self.attempt("addTag") { try repo.addTag(named: name, to: id) }
+        }
+        reload()
+    }
+
+    /// Takes the tag off this one clipping. The tag itself, its colour and its
+    /// rule stay — that is `deleteTag`, on the other screen, and the two are
+    /// worth keeping far apart: one undoes a filing mistake, the other throws
+    /// away a tag and every clipping's link to it at once.
+    func removeTag(_ tag: Tag, from item: ClipItem) {
+        removeTag(tag, from: [item])
+    }
+
+    /// Off a whole run, the mirror of `addTag(_:to:)` and for the same reason:
+    /// the sheet acts on the selection, so both of its halves have to.
+    func removeTag(_ tag: Tag, from items: [ClipItem]) {
+        guard let tagId = tag.id else { return }
+        for id in items.compactMap(\.id) {
+            Self.attempt("removeTag") { try repo.removeTag(tagId, from: id) }
         }
         reload()
     }

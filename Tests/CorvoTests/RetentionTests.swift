@@ -163,3 +163,44 @@ private func contents(_ repo: ItemRepository) throws -> Set<String> {
     #expect(removed == 4)
     #expect(after == ["oldTagged", "new2", "new3"])
 }
+
+/// A name protects a clipping the way a tag already did. Both take a
+/// deliberate keystroke and a sentence typed on purpose; only one of them
+/// used to survive the prune.
+@Test func namedItemsNeverExpireEither() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let oldDate = now.addingTimeInterval(-40 * 86400)
+    let named = try repo.insert(textItem("named"), source: nil, now: oldDate)
+    let unnamed = try repo.insert(textItem("unnamed"), source: nil, now: oldDate)
+    try repo.setLabel("the server password", for: named)
+    // Clearing a name is the way back out, so it must not go on protecting.
+    try repo.setLabel("", for: unnamed)
+
+    let removed = try retention.prune(policy: .standard, now: now)
+
+    #expect(removed == 1)
+    let remaining = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(remaining.compactMap(\.text) == ["named"])
+}
+
+/// And it does not count towards the ceiling either, which is the half that
+/// would otherwise push the unnamed clippings out one name at a time.
+@Test func namedItemsDoNotCountTowardsTheCeiling() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let named = try repo.insert(textItem("named"), source: nil, now: now)
+    try repo.setLabel("keep me", for: named)
+    for i in 0..<3 {
+        try repo.insert(textItem("item \(i)"), source: nil,
+                        now: now.addingTimeInterval(Double(i) + 1))
+    }
+
+    // Room for two unnamed clippings; the named one is not one of them.
+    try retention.prune(policy: RetentionPolicy(maxItems: 2, maxAge: .infinity), now: now)
+
+    let remaining = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(Set(remaining.compactMap(\.text)) == ["named", "item 2", "item 1"])
+}

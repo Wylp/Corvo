@@ -18,6 +18,9 @@ struct HistoryView: View {
     let onCopy: ([ClipItem]) -> Void
 
     @State private var tagText = ""
+    /// Which row of the tag sheet the keyboard is on, or `nil` for "still in the
+    /// field". See `HistoryModel.highlight`.
+    @State private var highlighted: Int?
     @State private var nameText = ""
     @FocusState private var isSearchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -143,6 +146,7 @@ struct HistoryView: View {
             KeycapHint(key: "⌘R", label: "Name")
             KeycapHint(key: "⌘T", label: "Tag")
             KeycapHint(key: "⌘⇧T", label: "Edit tags")
+            KeycapHint(key: "⌘↑↓", label: "Filter")
             KeycapHint(key: "⌘⌫", label: "Delete")
             Spacer(minLength: 8)
             KeycapHint(key: "esc", label: "Close")
@@ -164,6 +168,11 @@ struct HistoryView: View {
             // the version that holds.
             shortcutButton(.leftArrow) { arrow(-1) }
             shortcutButton(.rightArrow) { arrow(1) }
+            // ⌘ and not a bare ↑/↓: left and right already walk the clippings,
+            // so up and down walk what is being shown. ⌘ is what keeps the pair
+            // from being one more thing the search field eats.
+            shortcutButton(.upArrow, modifiers: .command) { model.moveFilter(-1) }
+            shortcutButton(.downArrow, modifiers: .command) { model.moveFilter(1) }
             shortcutButton(.return) { pasteSelected() }
             // Wins over the search field's own ⌘C: a shortcut registered on the
             // window's views is consulted before the menu item the field relies
@@ -195,7 +204,11 @@ struct HistoryView: View {
                 nameText = model.selectedItem?.label ?? ""
                 model.sheet = .rename
             }
-            shortcutButton("t", modifiers: .command) { tagText = ""; model.sheet = .naming }
+            shortcutButton("t", modifiers: .command) {
+                tagText = ""
+                highlighted = nil
+                model.sheet = .naming
+            }
             shortcutButton("t", modifiers: [.command, .shift]) { model.sheet = .tags }
         }
         .opacity(0)
@@ -209,11 +222,32 @@ struct HistoryView: View {
             .keyboardShortcut(key, modifiers: modifiers)
     }
 
+    /// The field makes a tag; the list below it reaches one that already exists.
+    ///
+    /// Both are needed, and the list is the half that was missing. A tag is
+    /// stored under the name it was written with, so typing at a tag one letter
+    /// or one capital off from the one that was meant does not fail — it quietly
+    /// files the clipping under a second tag beside it, and the user finds out
+    /// when the sidebar has "Work" and "work" in it. Reaching an existing tag
+    /// should not require remembering how it was spelled.
     private var tagSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("New tag").font(.headline)
+            Text("Add a tag").font(.headline)
             TextField("Tag name", text: $tagText)
                 .onSubmit { confirmTag() }
+                // On the field, which is what holds focus while this sheet is
+                // up. An arrow key that reaches a single-line text field is
+                // spent moving the caret, so this is also the only place the
+                // list can be reached without the mouse.
+                .onKeyPress(.upArrow) { moveHighlight(-1) }
+                .onKeyPress(.downArrow) { moveHighlight(1) }
+                // Typing changes which tags are on offer, so a row picked
+                // against the old list is no longer the row under the cursor.
+                // Dropping back to the field is the answer that cannot pick the
+                // wrong tag.
+                .onChange(of: tagText) { _, _ in highlighted = nil }
+            tagsAlreadyOn
+            tagChoiceList
             HStack {
                 Spacer()
                 Button("Cancel") { model.sheet = nil }
@@ -222,6 +256,110 @@ struct HistoryView: View {
         }
         .padding(20)
         .frame(width: 300)
+    }
+
+    /// What this clipping already carries, each row a way to take it back off.
+    ///
+    /// It belongs on this sheet and not only in the tag manager, because
+    /// "which tags does this clipping have" is one thought and adding was the
+    /// only half of it that had an answer here. A tag put on by mistake — and
+    /// the whole reason for the list below is that they used to be easy to put
+    /// on by mistake — had to be undone on a different screen, if the user found
+    /// it at all.
+    ///
+    /// Removing takes the tag off *this clipping*. It is not `deleteTag`, which
+    /// destroys the tag everywhere and lives behind a confirmation in the
+    /// manager. Nothing here needs one: what is undone is undone by clicking the
+    /// same name in the list below.
+    @ViewBuilder
+    private var tagsAlreadyOn: some View {
+        let onAll = model.tagsOnAll(model.selectedItems)
+        let carried = model.tags.filter { onAll.contains($0.name) }
+        if !carried.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(carried) { tag in
+                    HStack(spacing: 0) {
+                        tagChoiceRow(tag, isHighlighted: false)
+                        Button { remove(tag) } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 8)
+                        .help("Remove this tag from the clipping")
+                        .accessibilityLabel("Remove \(tag.name)")
+                    }
+                }
+            }
+            .frame(maxHeight: 108)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    /// Absent rather than empty when there is nothing to show, so a first tag is
+    /// made in a sheet the same size as the one that made it.
+    @ViewBuilder
+    private var tagChoiceList: some View {
+        if !tagChoices.isEmpty {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(Array(tagChoices.enumerated()), id: \.element.id) { index, tag in
+                            Button { add(tag) } label: {
+                                tagChoiceRow(tag, isHighlighted: index == highlighted)
+                            }
+                            .buttonStyle(.plain)
+                            .id(tag.id)
+                        }
+                    }
+                }
+                // Keeps the keyboard's row on screen. Without it ↓ walks past
+                // the fourth row into a highlight nobody can see.
+                .onChange(of: highlighted) { _, new in
+                    guard let new, tagChoices.indices.contains(new) else { return }
+                    proxy.scrollTo(tagChoices[new].id)
+                }
+            }
+            // Four rows and the fifth cut in half: enough to scan, and it says
+            // there is more below without a scroller having to appear.
+            .frame(maxHeight: 108)
+            .scrollIndicators(.never)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    private var tagChoices: [Tag] {
+        model.tagChoices(for: model.selectedItems, matching: tagText)
+    }
+
+    /// The dot and the name in the order the sidebar and the tag manager already
+    /// use them.
+    private func tagChoiceRow(_ tag: Tag, isHighlighted: Bool) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(TagColor.named(tag.color)?.color ?? Color.secondary.opacity(0.35))
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text(tag.name).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        // The row is the target, not the words in it.
+        .contentShape(Rectangle())
+        .background(isHighlighted ? Color.accentColor.opacity(0.25) : .clear,
+                    in: RoundedRectangle(cornerRadius: 4))
+        .accessibilityAddTraits(isHighlighted ? .isSelected : [])
+    }
+
+    /// `.ignored` when there is no list to walk, so the arrow goes on to do
+    /// whatever it did before rather than being swallowed by a sheet that had no
+    /// use for it.
+    private func moveHighlight(_ step: Int) -> KeyPress.Result {
+        let moved = HistoryModel.highlight(highlighted, step: step, count: tagChoices.count)
+        guard tagChoices.count > 0 else { return .ignored }
+        highlighted = moved
+        return .handled
     }
 
     /// Built to the same measurements as `tagSheet` on purpose. The two answer
@@ -253,9 +391,35 @@ struct HistoryView: View {
         model.sheet = nil
     }
 
+    /// ⏎ means whichever of the two things the sheet does is currently in hand:
+    /// take the highlighted tag, or make the one that was typed. Nothing is
+    /// highlighted until an arrow says so, so typing a brand new name and
+    /// pressing ⏎ can never be answered with somebody else's tag.
     private func confirmTag() {
+        if let index = highlighted, tagChoices.indices.contains(index) {
+            return add(tagChoices[index])
+        }
         model.addTag(tagText, to: model.selectedItems)
         model.sheet = nil
+    }
+
+    /// Passes the stored name, not what was typed, so the tag the row stands for
+    /// is the tag that gets attached — and to the whole selection, because the
+    /// field beside it already does. A row that reached one clipping while
+    /// typing the same name reached five would be the sheet contradicting
+    /// itself.
+    private func add(_ tag: Tag) {
+        model.addTag(tag.name, to: model.selectedItems)
+        model.sheet = nil
+    }
+
+    /// The sheet stays up, unlike `add`. Taking a tag off is the one thing here
+    /// a user is likely to do twice in a row, and it is also the one worth
+    /// seeing the result of: the row leaves the top list and reappears in the
+    /// one below.
+    private func remove(_ tag: Tag) {
+        model.removeTag(tag, from: model.selectedItems)
+        highlighted = nil
     }
 
     /// `NSEvent.modifierFlags` is the state right now, which during the handler
