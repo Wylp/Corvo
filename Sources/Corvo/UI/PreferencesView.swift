@@ -20,6 +20,12 @@ import UniformTypeIdentifiers
 struct PreferencesView: View {
     let prefs: Preferences
 
+    /// The live global shortcut. Passed rather than reached for: this is the one
+    /// setting the system can refuse, and the binder is what knows whether it
+    /// did. Three closures for one collaborator would be worse than the
+    /// collaborator — and the view still never sees Carbon.
+    let binder: HotkeyBinder
+
     /// Runs the prune. Called once the user has confirmed a lower limit, so the
     /// deletion they were warned about happens while they are still looking at
     /// the screen that caused it. Deferring it to the hourly timer would not
@@ -39,12 +45,26 @@ struct PreferencesView: View {
     /// this in another application. Recomputing the body also re-reads
     /// `LoginItem`, which the user can change in the same trip.
     @State private var hasAccessibility = Paster.hasPermission
+    /// Why the last shortcut the user typed was not taken. Cleared by the next
+    /// one that is.
+    @State private var shortcutRefusal: ShortcutRefusal?
     @FocusState private var focus: Field?
 
     private enum Field { case items, days }
 
-    init(prefs: Preferences, onRetentionLowered: @escaping @MainActor () -> Void = {}) {
+    /// Both cases name the combination they are about, because by the time this
+    /// is on screen the recorder has gone back to showing the shortcut that is
+    /// still bound — so the sentence is the only place left that says what was
+    /// refused.
+    private enum ShortcutRefusal: Equatable {
+        case needsModifier(String)
+        case inUse(String, current: String)
+    }
+
+    init(prefs: Preferences, binder: HotkeyBinder,
+         onRetentionLowered: @escaping @MainActor () -> Void = {}) {
         self.prefs = prefs
+        self.binder = binder
         self.onRetentionLowered = onRetentionLowered
         _maxItems = State(initialValue: prefs.maxItems)
         _maxAgeDays = State(initialValue: prefs.maxAgeDays)
@@ -54,6 +74,7 @@ struct PreferencesView: View {
     var body: some View {
         Form {
             startup
+            shortcut
             history
             ignoredApps
             permissions
@@ -131,6 +152,76 @@ struct PreferencesView: View {
             loginError = nil
         } catch {
             loginError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Shortcut
+
+    /// Placed second, ahead of retention: it is the setting people come here to
+    /// change, and the two retention numbers are set once.
+    private var shortcut: some View {
+        Section("Shortcut") {
+            LabeledContent("Open panel") {
+                HotkeyRecorder(hotkey: binder.current,
+                               onArmedChange: { armed in
+                                   armed ? binder.suspend() : binder.resume()
+                               },
+                               onRecording: record)
+            }
+            if let shortcutRefusal {
+                notice("exclamationmark.triangle.fill", .orange, refusalText(shortcutRefusal))
+            }
+            if binder.current != Hotkey.default {
+                // The way back for someone who recorded something they cannot
+                // reach. Without it that is a `defaults delete`, which is not a
+                // thing to ask of anyone.
+                HStack(spacing: 0) {
+                    Button("Reset to ⌘⇧V") { record(.recorded(.default)) }
+                        .controlSize(.small)
+                    Spacer(minLength: 0)
+                }
+            }
+            caption("Opens Corvo from any app. Needs ⌘, ⌥ or ⌃.")
+        }
+    }
+
+    /// Written the moment it is typed, unlike the retention numbers below.
+    ///
+    /// They defer because "5" on the way to "500" is a limit that would delete
+    /// almost everything. A shortcut has no such half-state: `⌘⇧` on the way to
+    /// `⌘⇧V` is not something `HotkeyRule` would let through, and the recorder
+    /// only reports a whole key press.
+    private func record(_ recording: HotkeyRecording) {
+        switch recording {
+        case .cancelled:
+            break
+        case .cleared:
+            _ = binder.apply(nil)
+            shortcutRefusal = nil
+        case .recorded(let hotkey):
+            guard HotkeyRule.rejection(for: hotkey) == nil else {
+                shortcutRefusal = .needsModifier(hotkey.display)
+                return
+            }
+            // Asking the system before storing anything is what makes the
+            // refusal harmless: on `false` the previous shortcut is still
+            // registered and still stored, and only this sentence changes.
+            guard binder.apply(hotkey) else {
+                shortcutRefusal = .inUse(hotkey.display,
+                                         current: binder.current?.display
+                                             ?? String(localized: "no shortcut"))
+                return
+            }
+            shortcutRefusal = nil
+        }
+    }
+
+    private func refusalText(_ refusal: ShortcutRefusal) -> Text {
+        switch refusal {
+        case .needsModifier(let combo):
+            Text("\(combo) needs ⌘, ⌥ or ⌃ — otherwise it would be swallowed everywhere.")
+        case .inUse(let combo, let current):
+            Text("\(combo) is in use by another app. Still using \(current).")
         }
     }
 

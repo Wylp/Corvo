@@ -73,7 +73,7 @@ so you never have to remember this table.
 
 | Key | Does |
 | --- | --- |
-| `⌘⇧V` | Open the panel, from anywhere |
+| `⌘⇧V` | Open the panel, from anywhere — the default, changeable in Settings |
 | `←` `→` | Move through the carousel |
 | `⏎` | Paste into the app you came from |
 | `⌘C` | Copy to the clipboard and stop there |
@@ -87,6 +87,19 @@ so you never have to remember this table.
 Typing goes straight to the search box, which matches the clipping's content
 **and** the name of the app it came from — so `slack` finds everything you
 copied out of Slack without touching the sidebar.
+
+### Changing the shortcut
+
+`⌘⇧V` is the default and the one thing another clipboard manager is likely to
+already hold. **Settings → Shortcut** rebinds it: click the shortcut, type the
+one you want, and it takes effect immediately. `⌫` clears it, which leaves the
+menu bar item as the only way to open the panel.
+
+It needs `⌘`, `⌥` or `⌃` — `⇧` alone is how you type a capital letter, and a
+global shortcut on `⇧V` would swallow the key in every app you use.
+
+If another app already holds the combination you typed, macOS refuses it. Corvo
+keeps the shortcut you had, and says so under the row.
 
 ## Tags that apply themselves
 

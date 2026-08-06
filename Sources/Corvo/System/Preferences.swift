@@ -59,6 +59,51 @@ final class Preferences {
         RetentionPolicy(maxItems: maxItems, maxAge: Double(maxAgeDays) * 86400)
     }
 
+    /// The global shortcut that opens the panel. `nil` means the user cleared it
+    /// and there is no global shortcut — the menu bar item is then the only way
+    /// in, which is a choice someone comparing Corvo against another clipboard
+    /// manager has a real use for.
+    ///
+    /// Two traps live in these six lines, both of them in how `UserDefaults`
+    /// answers for a value nobody ever wrote:
+    ///
+    /// - `kVK_ANSI_A` **is 0**, so `defaults.integer(forKey:)` cannot tell the
+    ///   key A from a key that was never set. Absence is read with
+    ///   `object(forKey:)` instead, and only absence falls back to `⌘⇧V`.
+    /// - `modifiers == 0` is the marker for "cleared". `HotkeyRule` makes a
+    ///   shortcut with no `⌘`/`⌥`/`⌃` unregisterable, so zero modifiers cannot
+    ///   mean a real binding, which leaves it free to mean this and saves a
+    ///   third key that could disagree with the other two.
+    ///
+    /// Validated on read as well as write, for the reason the retention limits
+    /// are clamped on read: the setter only bounds what Corvo itself wrote, and
+    /// a shortcut that arrived by `defaults write`, an MDM profile or a restored
+    /// plist has to come back registerable from here too. A stored shift-only
+    /// binding reads back as the default rather than as a shortcut that eats a
+    /// letter in every app.
+    var hotkey: Hotkey? {
+        get {
+            guard let code = defaults.object(forKey: "hotkeyKeyCode") as? Int,
+                  (0...0xFFFF).contains(code) else { return .default }
+            let modifiers = defaults.integer(forKey: "hotkeyModifiers")
+            guard modifiers != 0 else { return nil }
+            let stored = Hotkey(keyCode: UInt32(code), modifiers: UInt32(truncatingIfNeeded: modifiers))
+            return HotkeyRule.isAcceptable(stored) ? stored : .default
+        }
+        set {
+            // A rejected shortcut is stored as cleared rather than dropped: the
+            // one thing that must not happen is a write that leaves the previous
+            // binding in place while the caller believes it changed something.
+            guard let hotkey = newValue, HotkeyRule.isAcceptable(hotkey) else {
+                defaults.set(0, forKey: "hotkeyKeyCode")
+                defaults.set(0, forKey: "hotkeyModifiers")
+                return
+            }
+            defaults.set(Int(hotkey.keyCode), forKey: "hotkeyKeyCode")
+            defaults.set(Int(hotkey.modifiers), forKey: "hotkeyModifiers")
+        }
+    }
+
     static func clamped(_ value: Int, to range: ClosedRange<Int>) -> Int {
         min(max(value, range.lowerBound), range.upperBound)
     }
