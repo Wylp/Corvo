@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import Foundation
+import ImageIO
 
 @MainActor
 final class PasteboardMonitor {
@@ -143,9 +144,52 @@ final class PasteboardMonitor {
                             contentHash: Self.hash(of: Data(text.utf8)))
     }
 
+    /// The largest image Corvo will decode, in pixels.
+    ///
+    /// Calibration, not a magic number. The floor is real captures: a 6K Pro
+    /// Display XDR grab is 6016 × 3384 ≈ 20 MPx, and a two-display grab roughly
+    /// doubles that, so 40 MPx clears the largest screenshot anyone takes with
+    /// room to spare. The ceiling is what decoding costs: an image is
+    /// `width × height × 4` bytes once decoded, so 40 MPx is ~160 MB — the most
+    /// this app will spend on one clipping. Measured above the ceiling, on the
+    /// current code: a 4,67 MB compressed TIFF of 16 000 × 16 000 (256 MPx) took
+    /// 1,396 s and 998 MB of RSS, on the main thread, inside a 0,3 s poller.
+    ///
+    /// Raise it only alongside the two costs above; a bigger number is a bigger
+    /// allocation an untrusted app gets to ask for.
+    private static let maxPixels = 40_000_000
+
+    /// Re-encodes pasteboard image bytes as PNG, refusing anything past
+    /// `maxPixels`.
+    ///
+    /// The size is read from the header via `CGImageSource` rather than from an
+    /// `NSBitmapImageRep`, and that ordering is the fix: `NSBitmapImageRep(data:)`
+    /// decodes as it constructs, so a guard placed after it has already paid for
+    /// the bomb. `CGImageSourceCopyPropertiesAtIndex` gives the dimensions
+    /// without materialising a single pixel.
+    ///
+    /// Bytes whose header will not parse are handed back untouched, as before —
+    /// nothing decodes them, so nothing can be amplified by them.
     private static func toPNG(_ data: Data) -> Data? {
+        if let size = pixelCount(of: data), size > maxPixels {
+            // Discarded, never half-written: the blob is what makes this
+            // persistent, and it has to be refused before it reaches disk.
+            NSLog("Corvo: discarded a \(size)-pixel image, over the \(maxPixels) ceiling")
+            return nil
+        }
         guard let rep = NSBitmapImageRep(data: data) else { return data }
         return rep.representation(using: .png, properties: [:])
+    }
+
+    /// `nil` when the header does not parse or carries no dimensions.
+    private static func pixelCount(of data: Data) -> Int? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+        return width * height
     }
 
     static func hash(of data: Data) -> String {

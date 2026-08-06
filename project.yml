@@ -44,6 +44,19 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
         GENERATE_INFOPLIST_FILE: NO
+      configs:
+        # Xcode injects `com.apple.security.get-task-allow` into the base
+        # entitlements unless a configuration says otherwise, and Release was
+        # inheriting it. That entitlement authorises `task_for_pid()`: any
+        # process running as the same user could attach a debugger and read
+        # Corvo's memory — which by construction holds every clipping just
+        # captured, in the clear — with no TCC prompt and no password. It is
+        # also the exact protection ENABLE_HARDENED_RUNTIME above is bought for,
+        # so leaving both on shipped an app that only looked hardened.
+        #
+        # Debug is deliberately left alone: development needs the debugger.
+        Release:
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
 
   CorvoTests:
     type: bundle.unit-test
