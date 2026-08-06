@@ -67,23 +67,29 @@ enum Paster {
     /// the paste ever lands in the wrong window.
     static let activationDelay: TimeInterval = 0.12
 
-    /// Writes to the clipboard and pastes into the given app. Returns `false`
-    /// when Accessibility permission is missing — in that case the content was
-    /// only copied.
-    @discardableResult
+    /// What became of a paste. `Bool` was the wrong shape: the old code answered
+    /// `true` — pasted — when there was nothing left to write, so a clipping
+    /// whose file had been moved away closed the panel and did nothing at all,
+    /// with no way for the caller to say so.
+    enum Outcome {
+        case pasted
+        case nothingToWrite
+        case noPermission
+    }
+
+    /// Writes to the clipboard and pastes into the given app. The content is on
+    /// the clipboard in every outcome but `.nothingToWrite`, so a caller that
+    /// cannot paste can still tell the user to press ⌘V.
     static func paste(_ item: ClipItem, blobs: BlobStore,
-                      into app: NSRunningApplication?) -> Bool {
-        // ponytail: an item with nothing left to write pastes nothing, silently.
-        // The card already shows it as "Unavailable", so the user has been told;
-        // give it its own alert if that turns out not to be enough.
-        guard writeToClipboard(item, blobs: blobs) else { return true }
-        guard hasPermission else { return false }
+                      into app: NSRunningApplication?) -> Outcome {
+        guard writeToClipboard(item, blobs: blobs) else { return .nothingToWrite }
+        guard hasPermission else { return .noPermission }
 
         app?.activate()
         DispatchQueue.main.asyncAfter(deadline: .now() + activationDelay) {
             postCmdV()
         }
-        return true
+        return .pasted
     }
 
     private static func postCmdV() {

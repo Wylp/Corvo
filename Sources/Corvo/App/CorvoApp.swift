@@ -105,10 +105,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let env else { return }
         panel?.hide()
         model?.markUsed(item)
-        let pasted = Paster.paste(item, blobs: env.blobs, into: env.tracker.focusedApp)
+        let outcome = Paster.paste(item, blobs: env.blobs, into: env.tracker.focusedApp)
         env.monitor.ignoreCurrentContents()
-        guard !pasted else { return }
-        warnMissingPermission()
+        switch outcome {
+        case .pasted: return
+        case .noPermission: warnMissingPermission()
+        case .nothingToWrite: warnNothingToWrite()
+        }
     }
 
     /// ⌘C: the clipping goes to the clipboard and nowhere else — no app is
@@ -127,6 +130,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.monitor.ignoreCurrentContents()
     }
 
+    /// The clipping had nothing left to put on the clipboard — a copied file
+    /// that has since been moved or deleted. It used to report success and close
+    /// the panel, which looked exactly like the app ignoring the keypress.
+    private func warnNothingToWrite() {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Nothing left to paste")
+        alert.informativeText = String(localized: """
+            The file this clipping points at has been moved or deleted. Corvo \
+            keeps a reference to files rather than a copy of them, so there is \
+            nothing left to put on the clipboard.
+            """)
+        alert.addButton(withTitle: String(localized: "OK"))
+        alert.runModal()
+    }
+
     /// `NSAlert` takes plain strings, not `LocalizedStringKey`, so these have to
     /// go through `String(localized:)` to reach the String Catalog at all.
     private func warnMissingPermission() {
@@ -136,6 +154,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Corvo needs Accessibility permission to paste straight into the app \
             you were using. The content is already on your clipboard — paste it \
             with ⌘V.
+
+            If Corvo is already switched on in that list, macOS is holding a \
+            permission for an older copy of the app: select Corvo, remove it \
+            with the − button, then add it again.
             """)
         alert.addButton(withTitle: String(localized: "Open Settings"))
         alert.addButton(withTitle: String(localized: "Not now"))

@@ -68,8 +68,9 @@
       "comment": "App name. Never translated.",
       "shouldTranslate": false
     },
-    "Corvo needs Accessibility permission to paste straight into the app you were using. The content is already on your clipboard — paste it with ⌘V.": {
-      "comment": "Alert body for the missing-permission case. Must make clear the content was not lost — it is already on the clipboard."
+    "Corvo needs Accessibility permission to paste straight into the app you were using. The content is already on your clipboard — paste it with ⌘V.\n\nIf Corvo is already switched on in that list, macOS is holding a permission for an older copy of the app: select Corvo, remove it with the − button, then add it again.": {
+      "extractionState": "manual",
+      "localizations": {}
     },
     "Corvo will keep the newest ^[%lld clipping](inflect: true) and delete anything older than ^[%lld day](inflect: true). Pinned and tagged clippings are never deleted. Corvo has no undo.": {
       "comment": "Body of the lowered-limit confirmation. First %lld is the item limit, second is the age limit in days."
@@ -173,8 +174,16 @@
     "Nothing here yet": {
       "comment": "Title shown when the history is empty."
     },
+    "Nothing left to paste": {
+      "extractionState": "manual",
+      "localizations": {}
+    },
     "Nothing you have copied matches yet. New copies still can.": {
       "comment": "Status under the pattern field when a valid rule matches nothing stored yet."
+    },
+    "OK": {
+      "extractionState": "manual",
+      "localizations": {}
     },
     "One bundle ID per line. Nothing copied in these apps is kept.": {
       "comment": "Caption under the blocklist."
@@ -262,6 +271,10 @@
     },
     "That app carries no identifier, so no rule can name it. Choose another.": {
       "comment": "Inline error under the tag editor's source picker when the chosen app bundle has no bundle identifier to key the rule on."
+    },
+    "The file this clipping points at has been moved or deleted. Corvo keeps a reference to files rather than a copy of them, so there is nothing left to put on the clipboard.": {
+      "extractionState": "manual",
+      "localizations": {}
     },
     "The tag is saved and added to ^[%lld clipping](inflect: true) already in your history. Corvo has no undo.": {
       "comment": "Message of the retroactive-apply confirmation. %lld is how many clippings will be tagged."
