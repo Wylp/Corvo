@@ -91,8 +91,14 @@ enum SyntaxHighlighter {
 
     // MARK: - Highlighting
 
-    nonisolated static func highlight(_ text: String, as language: Language) -> AttributedString {
-        let source = String(text.prefix(characterLimit))
+    /// - Parameter limit: how much of `text` to colour. Defaults to the card's
+    ///   budget, which is the only thing that called this until the hover
+    ///   preview arrived. The preview passes its own, larger one — it has the
+    ///   room to show more, and raising the shared constant instead would have
+    ///   made every visible card pay for it on every redraw.
+    nonisolated static func highlight(_ text: String, as language: Language,
+                                      limit: Int = characterLimit) -> AttributedString {
+        let source = String(text.prefix(limit))
         guard language != .plain else { return AttributedString(source) }
         var result = AttributedString()
         for span in spans(of: source, in: language) {

@@ -72,7 +72,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // The panel is hidden, not destroyed, so nothing else would ever
                 // put the sheet away: it would be back on top the next time the
                 // panel opens, over a window that can no longer dismiss it.
-                clearTransientState: { [weak model] in model?.sheet = nil })
+                //
+                // The hover preview joins the sheet here rather than growing its
+                // own hook, and for a sharper version of the same reason. It is
+                // a *separate window*, so "it goes away with the panel" is not
+                // free — it is bought twice over: AppKit orders a child window
+                // out with its parent, which covers Esc, ⏎, ⌘C and the hotkey,
+                // and this clearing covers the two moments AppKit would
+                // otherwise put it back — `hidesOnDeactivate` restoring the
+                // panel on reactivation, and the next `show()`, which runs this
+                // before the window reaches the screen.
+                clearTransientState: { [weak model] in
+                    model?.sheet = nil
+                    PreviewPanel.shared.dismiss()
+                })
 
             // The answer typed into the notification comes back here. It goes
             // through the model rather than the repository so the panel redraws

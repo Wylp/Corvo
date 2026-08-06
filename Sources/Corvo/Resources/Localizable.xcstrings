@@ -1,6 +1,12 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%lld characters": {
+      "comment": "Hover preview footer: the length of a text clipping. The number is the whole clipping, not the part shown."
+    },
+    "%lld × %lld pixels": {
+      "comment": "Hover preview footer: an image's true size in pixels — the fact the card cannot show. The separator is the multiplication sign U+00D7, not the letter x."
+    },
     "A tag named “%@” already exists.": {
       "comment": "Inline error in the tag editor when the name already belongs to another tag. %@ is the name the user typed."
     },
@@ -67,6 +73,9 @@
     "Corvo": {
       "comment": "App name. Never translated.",
       "shouldTranslate": false
+    },
+    "Corvo Settings": {
+      "comment": "Title of the Settings window."
     },
     "Corvo needs Accessibility permission to paste straight into the app you were using. The content is already on your clipboard — paste it with ⌘V.": {
       "comment": "Alert body for the missing-permission case. Must make clear the content was not lost — it is already on the clipboard."
@@ -242,6 +251,9 @@
     "Show History": {
       "comment": "Menu bar item that opens the floating panel."
     },
+    "Showing the first %lld of %lld characters": {
+      "comment": "Hover preview footer, when the clipping was too long to render whole. First number is the preview's budget, second is the clipping's real length."
+    },
     "Shown on the card and searchable. Clear it to remove the name.": {
       "comment": "Helper text under the field in the ⌘R rename sheet."
     },
@@ -265,6 +277,9 @@
     },
     "The tag is saved and added to ^[%lld clipping](inflect: true) already in your history. Corvo has no undo.": {
       "comment": "Message of the retroactive-apply confirmation. %lld is how many clippings will be tagged."
+    },
+    "This file no longer exists": {
+      "comment": "Hover preview footer for a file clipping whose original file is gone from disk. The card says 'Unavailable'; here there is room to say it plainly."
     },
     "Try another word, or clear the search.": {
       "comment": "Hint under the 'No matches' title."

@@ -13,6 +13,13 @@ struct ItemCard: View {
     let tags: [Tag]
     let isSelected: Bool
     let blobs: BlobStore
+    /// The pointer is on this card, with the card's horizontal centre in screen
+    /// coordinates. Fires on every movement across the card, not only on entry,
+    /// so that the anchor keeps up while the carousel scrolls underneath.
+    let onHover: (CGFloat) -> Void
+    /// The pointer left. Not the same as "close the preview" — the caller
+    /// decides that, because the gutter between two cards is also a departure.
+    let onHoverEnd: () -> Void
 
     static let width: CGFloat = 190
     static let height: CGFloat = 250
@@ -54,6 +61,16 @@ struct ItemCard: View {
         // makes the date come out in English on a Portuguese machine.
         .environment(\.locale, Locale.app)
         .accessibilityElement(children: .combine)
+        // `onContinuousHover` rather than `onHover`, for the coordinates: the
+        // preview has to be anchored to this card, and the phase carries the
+        // pointer's position *inside* the card. Subtracting it from the
+        // pointer's position on screen gives the card's own left edge, and the
+        // width gives its centre — live as the carousel scrolls, with no
+        // geometry reader, no stored frame and no window lookup.
+        .onContinuousHover { phase in
+            guard case .active(let point) = phase else { return onHoverEnd() }
+            onHover(NSEvent.mouseLocation.x - point.x + Self.width / 2)
+        }
     }
 
     /// The source app's colour arrives as a wash behind the header, never as a
