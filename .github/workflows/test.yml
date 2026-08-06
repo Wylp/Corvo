@@ -1,0 +1,67 @@
+name: test
+
+on:
+  pull_request:
+    branches: [master]
+  # Also on master itself: a green PR can still merge into a red branch when
+  # two of them land close together, and that is exactly when nobody is looking.
+  push:
+    branches: [master]
+
+# A second push to a PR makes the first run pointless. Cancel it rather than
+# pay for both and wait on the stale one.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Corvo.xcodeproj is generated, not committed, and `make test` regenerates
+      # it — so xcodegen has to exist before anything builds.
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Test
+        run: make test
+
+      # The suite passing is not the whole story: this project has a rule that
+      # every user-visible string reaches the String Catalog, and the compiler
+      # extracts them without ever writing them back. A string added in a PR and
+      # not merged into the catalog by hand ships as an untranslatable literal,
+      # and nothing else would catch it.
+      - name: Check the String Catalog covers every extracted string
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, plistlib, sys
+
+          keys = set()
+          for root, _, files in os.walk("."):
+              for f in files:
+                  if not f.endswith(".stringsdata"):
+                      continue
+                  try:
+                      data = plistlib.load(open(os.path.join(root, f), "rb"))
+                  except Exception:
+                      continue
+                  for table in data.get("tables", {}).values():
+                      keys.update(table.keys())
+
+          if not keys:
+              print("no .stringsdata found — nothing to compare, skipping")
+              sys.exit(0)
+
+          catalog = json.loads(
+              pathlib.Path("Sources/Corvo/Resources/Localizable.xcstrings").read_text()
+          )
+          missing = sorted(keys - set(catalog["strings"]))
+          if missing:
+              print("Strings extracted by the build but absent from the catalog:")
+              for k in missing:
+                  print("  -", k.replace("\n", " / ")[:120])
+              sys.exit(1)
+          print(f"catalog covers all {len(keys)} extracted strings")
+          PY
