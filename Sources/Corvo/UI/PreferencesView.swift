@@ -109,10 +109,13 @@ struct PreferencesView: View {
             // mechanisms — "open Corvo again" is a Finder double-click, a
             // Spotlight hit or a Dock alias, and all three land in the same
             // place.
+            //
+            // Settings is the only destination named. Bringing the icon back is
+            // something you do *in* Settings, so saying both made one trip sound
+            // like two.
             Text("""
                 Corvo keeps running and ⌘⇧V still opens the history. To get \
-                Settings back — or to bring the icon back — open Corvo again \
-                from the Applications folder.
+                Settings back open Corvo again from the Applications folder.
                 """)
         }
     }
