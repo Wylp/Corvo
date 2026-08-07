@@ -35,10 +35,10 @@ struct PreferencesView: View {
     @State private var blocklistText: String
     @State private var loginError: String?
     @State private var isConfirmingCut = false
-    /// Hiding the icon takes the app's only visible control away, so it is asked
-    /// about rather than just done — the alert is where the way back is written
-    /// down, at the moment the user still has both.
-    @State private var isConfirmingHide = false
+    /// The menu bar row, out of the body so it can be asked questions — and so it
+    /// hears the writes this screen did not make. `@StateObject` because the
+    /// window outlives any one body pass and the model owns the observation.
+    @StateObject private var menuBarIcon: MenuBarIconModel
     /// Re-read when the app comes back to the front, because the user grants
     /// this in another application. Recomputing the body also re-reads
     /// `LoginItem`, which the user can change in the same trip.
@@ -53,6 +53,7 @@ struct PreferencesView: View {
         _maxItems = State(initialValue: prefs.maxItems)
         _maxAgeDays = State(initialValue: prefs.maxAgeDays)
         _blocklistText = State(initialValue: prefs.blocklist.joined(separator: "\n"))
+        _menuBarIcon = StateObject(wrappedValue: MenuBarIconModel(prefs: prefs))
     }
 
     var body: some View {
@@ -94,13 +95,13 @@ struct PreferencesView: View {
                 Pinned and tagged clippings are never deleted. Corvo has no undo.
                 """)
         }
-        .alert("Hide the menu bar icon?", isPresented: $isConfirmingHide) {
+        .alert("Hide the menu bar icon?", isPresented: $menuBarIcon.isConfirmingHide) {
             // No `role: .destructive` and no `.defaultAction` on Cancel: nothing
             // is deleted here and nothing is lost, so the confirmation exists to
             // hand over the two routes back, not to talk anyone out of it. Hide
             // is the default button because it is what the user just asked for.
             Button("Cancel", role: .cancel) {}
-            Button("Hide") { prefs.showsMenuBarIcon = false }
+            Button("Hide") { menuBarIcon.confirmHide() }
         } message: {
             // Both routes, because either one alone leaves a hole: the shortcut
             // opens the history but never Settings, and the reopen never shows
@@ -132,7 +133,7 @@ struct PreferencesView: View {
                        Text("macOS refused the change: \(loginError)"))
             }
             Toggle("Show icon in menu bar", isOn: showsMenuBarIcon)
-            if !prefs.showsMenuBarIcon {
+            if !menuBarIcon.isShown {
                 // Not a warning: the user asked for this and Corvo is working
                 // exactly as told. It is on screen because the alert that said it
                 // is gone, and this is the one screen that can still say it —
@@ -142,24 +143,15 @@ struct PreferencesView: View {
         }
     }
 
-    /// Reads `prefs` on every pass rather than mirroring it, like `launchAtLogin`
-    /// above and for a second reason as well: `MenuBarExtra`'s `isInserted` writes
-    /// the same key when the icon is ⌘-dragged out of the menu bar, so a mirrored
-    /// copy would show an icon that is no longer there.
+    /// Reads and writes `MenuBarIconModel`, which is where both the decision and
+    /// the stored value live — see that type for why the row cannot simply read
+    /// `prefs` the way `launchAtLogin` reads `LoginItem`.
     ///
-    /// Switching it *on* is immediate — an icon appearing needs no warning. Only
-    /// the hide goes through the alert, and only the alert's Hide button writes,
-    /// so a cancelled hide leaves nothing behind to undo.
+    /// Written out rather than passed as a method reference for the reason given
+    /// on `launchAtLogin`: Swift 6.1's IRGen crashes building the isolation thunk
+    /// for a `@MainActor` method handed to `Binding`'s non-isolated `set`.
     private var showsMenuBarIcon: Binding<Bool> {
-        Binding(get: { prefs.showsMenuBarIcon }, set: { setShowsMenuBarIcon($0) })
-    }
-
-    private func setShowsMenuBarIcon(_ shown: Bool) {
-        guard shown else {
-            isConfirmingHide = true
-            return
-        }
-        prefs.showsMenuBarIcon = true
+        Binding(get: { menuBarIcon.isShown }, set: { menuBarIcon.request($0) })
     }
 
     /// Reads the system on every pass instead of mirroring it into `@State`.
