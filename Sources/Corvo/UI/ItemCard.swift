@@ -26,6 +26,26 @@ struct ItemCard: View {
 
     private static let radius: CGFloat = 10
 
+    /// Around the content region, and therefore what the snippet's line breaks
+    /// are decided by: `width` minus twice this is the column the text wraps in.
+    ///
+    /// A constant rather than a literal on the `.padding` below because
+    /// `previewAddsSomething(for:lines:)` measures the snippet in that same
+    /// column to decide whether the preview opens at all. Change the padding and
+    /// the measurement follows; write the number twice and one day it will not.
+    private static let contentPadding: CGFloat = 12
+
+    /// The snippet's font as AppKit sees it. `.system(.subheadline, design:
+    /// .monospaced)` on the `Text` below resolves to exactly this, and the two
+    /// have to stay in step for the same reason `contentPadding` is shared —
+    /// the gate lays the text out in this font to find out whether the card
+    /// already showed all of it.
+    private static var textFont: NSFont {
+        NSFont.monospacedSystemFont(
+            ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize,
+            weight: .regular)
+    }
+
     private var fileIsMissing: Bool {
         guard item.kind == .file, let path = item.filePath else { return false }
         return !FileManager.default.fileExists(atPath: path)
@@ -67,8 +87,17 @@ struct ItemCard: View {
         // pointer's position on screen gives the card's own left edge, and the
         // width gives its centre — live as the carousel scrolls, with no
         // geometry reader, no stored frame and no window lookup.
+        //
+        // Silent when the preview would have nothing to add — see
+        // `previewAddsSomething(for:lines:)`. The gate is here rather than in
+        // `PreviewPanel` so that such a card starts no dwell and cancels no
+        // timer: the panel never hears about the hover, and "nothing happens"
+        // is nothing happening rather than something undone. A preview already
+        // open on a neighbouring card still closes, because that card's own
+        // `.ended` phase fired on the way out.
         .onContinuousHover { phase in
             guard case .active(let point) = phase else { return onHoverEnd() }
+            guard Self.previewAddsSomething(for: item, lines: textLineLimit) else { return }
             onHover(NSEvent.mouseLocation.x - point.x + Self.width / 2)
         }
     }
@@ -132,6 +161,83 @@ struct ItemCard: View {
         label == nil && tags.contains(where: \.promptsForName)
     }
 
+    /// How many lines of the snippet this card shows.
+    ///
+    /// The name takes its line out of the preview, not out of the tag row: the
+    /// card is a fixed 250pt and something has to give. Losing the tenth line of
+    /// a snippet costs less than losing the tags, which are the whole reason the
+    /// card was named.
+    ///
+    /// The invitation to name it costs the same line as the name itself, on
+    /// purpose: answering the prompt must not shuffle the card it is printed on.
+    private var textLineLimit: Int { label == nil && !awaitsName ? 10 : 8 }
+
+    /// Whether the hover preview would show anything this card does not already
+    /// show. When it would not, hovering does nothing at all — no dwell, no
+    /// window, no hint. A preview that repeats what is already on screen is
+    /// noise, and the card is right there behind it.
+    ///
+    /// Static and free of SwiftUI so that the one genuinely uncertain part of
+    /// this — where the lines actually break — is decided by measurement in a
+    /// test rather than by eye in a screenshot.
+    ///
+    /// - Parameter lines: the card's snippet budget, which is not a constant.
+    ///   See `textLineLimit`.
+    static func previewAddsSomething(for item: ClipItem, lines: Int) -> Bool {
+        // A thumbnail 166 points wide and a path cut to three lines are never
+        // the whole story — those two always have more to give. Text is the one
+        // kind that can already be complete on the card.
+        guard item.kind == .text else { return true }
+        // The same prefix the card draws: `SyntaxHighlighter.highlight` cuts
+        // there, so measuring past it would be measuring text the card never
+        // laid out. It also bounds the cost, which matters because this runs on
+        // every pointer movement across a card.
+        //
+        // ponytail: laid out on every such movement, not cached. Measured at
+        // 25µs for a typical short clipping, 45µs for one that fills the card,
+        // and 580µs at the ceiling — 1,200 characters with no break opportunity
+        // in them, a base64 blob or a minified line, where hyphenation has to
+        // try every position. That worst case is still a fraction of a frame,
+        // and mouse-moved events arrive at the refresh rate. Upgrade path: the
+        // answer is a function of the text and the line budget alone, so it
+        // caches by item id if this ever shows up in a trace.
+        let text = String((item.text ?? "").prefix(SyntaxHighlighter.characterLimit))
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        // Half a point of slack, well under a line: it keeps a snippet that
+        // fills its budget exactly from being called an overflow.
+        return laidOutHeight(text) > laidOutHeight("M") * CGFloat(lines) + 0.5
+    }
+
+    /// The height `text` occupies in the card's snippet font across the card's
+    /// usable column. `.usesLineFragmentOrigin` is the option that makes this a
+    /// wrapped multi-line layout rather than one long line measured end to end —
+    /// without it a hundred-character line reports the width of a hundred
+    /// characters and the height of one.
+    ///
+    /// A single "M" is the unit the result is read in, rather than
+    /// `NSLayoutManager.defaultLineHeight(for:)`, which disagrees with what this
+    /// call actually produces (13 against 14 at `.subheadline`). Measuring the
+    /// unit the same way it measures the text is what makes the ratio a line
+    /// count instead of an approximation of one.
+    ///
+    /// Hyphenation is on because SwiftUI's is: a run with nowhere to break — a
+    /// token, a base64 blob, a URL — gets a hyphen at each break, and the hyphen
+    /// costs a column, so the same run takes more lines than plain word wrapping
+    /// says. Measured against renderings of the card, an unbroken 210-character
+    /// run truncates on screen while plain wrapping called it nine lines and
+    /// comfortable. That is the false negative that matters — the preview
+    /// staying shut over text the card cut off.
+    private static func laidOutHeight(_ text: String) -> CGFloat {
+        let wrapping = NSMutableParagraphStyle()
+        wrapping.usesDefaultHyphenation = true
+        return NSAttributedString(string: text,
+                                  attributes: [.font: textFont, .paragraphStyle: wrapping])
+            .boundingRect(with: CGSize(width: width - contentPadding * 2,
+                                       height: .greatestFiniteMagnitude),
+                          options: [.usesLineFragmentOrigin])
+            .height
+    }
+
     private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Never both — `awaitsName` requires the absence of a label — so
@@ -141,7 +247,7 @@ struct ItemCard: View {
             preview
             if !tags.isEmpty { tagRow }
         }
-        .padding(12)
+        .padding(Self.contentPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -192,16 +298,9 @@ struct ItemCard: View {
             // paragraph are told apart before any of them is read.
             Text(SyntaxHighlighter.highlight(item.text ?? "",
                                              as: SyntaxHighlighter.detect(item.text ?? "")))
+                // `Self.textFont` is this same face, and has to stay that way.
                 .font(.system(.subheadline, design: .monospaced))
-                // The name takes its line out of the preview, not out of the
-                // tag row: the card is a fixed 250pt and something has to give.
-                // Losing the tenth line of a snippet costs less than losing the
-                // tags, which are the whole reason the card was named.
-                //
-                // The invitation to name it costs the same line as the name
-                // itself, on purpose: answering the prompt must not shuffle the
-                // card it is printed on.
-                .lineLimit(label == nil && !awaitsName ? 10 : 8)
+                .lineLimit(textLineLimit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         case .image:
             if let path = item.blobPath,

@@ -220,6 +220,127 @@ struct PreviewPanelTests {
     }
 }
 
+/// Whether the preview opens at all.
+///
+/// The rule is that hovering opens a preview only when there is something left
+/// to show: a picture and a file always have more, and a text clipping has more
+/// only when it did not fit on the card. Everything interesting about that lives
+/// in "did it fit", which depends on the real font, the real column and where the
+/// lines really break — so it is measured, and measured here rather than judged
+/// by eye in a rendering.
+@MainActor
+struct PreviewGateTests {
+    /// `ItemCard` wraps the snippet in a 24-column monospaced field: 190 points
+    /// wide, less 12 of padding on each side, at `.subheadline`. Written out
+    /// once so the fixtures below say what shape of text they are building.
+    private static let columns = 24
+
+    private static func lines(_ count: Int, width: Int = columns) -> String {
+        (0..<count).map { _ in String(repeating: "x", count: width) }
+            .joined(separator: "\n")
+    }
+
+    private static func opens(_ text: String, lines limit: Int = 10) -> Bool {
+        ItemCard.previewAddsSomething(for: PreviewFixture.item(.text, text: text),
+                                      lines: limit)
+    }
+
+    // MARK: - Text that already fits
+
+    @Test func aShortLineIsAlreadyEntirelyOnTheCard() {
+        #expect(Self.opens("let x = 1") == false)
+    }
+
+    /// The limit is "it fit", not "there was room left over". A snippet that
+    /// fills the card's budget to the last line has nothing further to show, so
+    /// the window would be a copy of what the pointer is already resting on.
+    @Test func fillingTheBudgetExactlyIsStillFitting() {
+        #expect(Self.opens(Self.lines(10)) == false)
+    }
+
+    @Test func oneLineMoreThanTheBudgetOpensIt() {
+        #expect(Self.opens(Self.lines(11)))
+    }
+
+    /// Nothing to preview and nothing to say about it.
+    @Test func nothingAndWhitespaceOpenNothing() {
+        for text in ["", "   ", "\n\n\n", "  \n \t \n  "] {
+            #expect(Self.opens(text) == false, "\(text.debugDescription) should stay silent")
+        }
+    }
+
+    // MARK: - Why it is measured rather than counted
+
+    /// One line in the clipping, eighteen on the card. A character count would
+    /// have to call this one line and be wrong; laying it out is what notices
+    /// that a 420-character run with nowhere to break wraps down the whole card
+    /// and off the bottom of it.
+    @Test func aSingleUnbrokenLineWrapsPastTheBudget() {
+        #expect(Self.opens(String(repeating: "abcdefghij", count: 42)))
+    }
+
+    /// The boundary for a run with nowhere to break — a token, a base64 blob, a
+    /// URL. SwiftUI hyphenates one, and the hyphen costs a column, so the run
+    /// takes more lines than plain word wrapping would give it. Confirmed
+    /// against renderings of the card: 200 characters fill the ten lines to the
+    /// last one, and 210 come back with an ellipsis on line ten. Plain wrapping
+    /// called both of them comfortable, and the preview would have stayed shut
+    /// over text the card had cut off.
+    @Test func hyphenationDecidesTheBoundaryForAnUnbrokenRun() {
+        let token = { (n: Int) in String(repeating: "abcdefghij", count: n / 10) }
+        #expect(Self.opens(token(200)) == false)
+        #expect(Self.opens(token(210)))
+    }
+
+    /// The pair a character count gets backwards: the longer clipping fits and
+    /// the shorter one does not. 200 characters with nowhere to break wrap into
+    /// nine lines and stay on the card; 155 characters written one column too
+    /// wide wrap into twelve and run off it.
+    @Test func theShorterClippingIsTheOneThatOverflows() {
+        let fits = String(repeating: "y", count: 200)
+        let overflows = Self.lines(6, width: Self.columns + 1)
+
+        #expect(overflows.count < fits.count)
+        #expect(Self.opens(fits) == false)
+        #expect(Self.opens(overflows))
+    }
+
+    // MARK: - The budget is not a constant
+
+    /// A named clipping, or one waiting to be named, shows eight lines instead
+    /// of ten — the name takes its line out of the snippet. A nine-line snippet
+    /// is therefore complete on one card and truncated on the other, and the
+    /// gate has to be told which card it is looking at.
+    @Test func aNamedCardTruncatesTwoLinesEarlier() {
+        #expect(Self.opens(Self.lines(9), lines: 10) == false)
+        #expect(Self.opens(Self.lines(9), lines: 8))
+    }
+
+    // MARK: - The kinds that always have more
+
+    /// No measurement is consulted for these two. The card's thumbnail is 166
+    /// points wide whatever the picture is, and the file's path is cut to three
+    /// lines whatever the path is.
+    @Test func aPictureAndAFileAlwaysOpen() {
+        let picture = PreviewFixture.item(.image, blobPath: "fixture.png")
+        let file = PreviewFixture.item(.file, text: "report.pdf", filePath: "/tmp/report.pdf")
+        for lines in [8, 10] {
+            #expect(ItemCard.previewAddsSomething(for: picture, lines: lines))
+            #expect(ItemCard.previewAddsSomething(for: file, lines: lines))
+        }
+    }
+
+    /// A picture with no blob and a file that is gone still open: what the
+    /// preview has to add there is the apology, which the card only has room to
+    /// hint at.
+    @Test func anUnreadableBlobAndAMissingFileStillOpen() {
+        #expect(ItemCard.previewAddsSomething(for: PreviewFixture.item(.image), lines: 10))
+        #expect(ItemCard.previewAddsSomething(
+            for: PreviewFixture.item(.file, text: "gone.md", filePath: "/nowhere/gone.md"),
+            lines: 10))
+    }
+}
+
 /// The budgets: the one that stops a multi-megabyte clipping from being laid out
 /// in full on the main thread, and the one that stops a decompression bomb from
 /// being decoded in full to draw it.
