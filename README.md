@@ -209,9 +209,13 @@ XcodeGen to build:
 brew install xcodegen
 make build     # Debug build
 make test      # the test suite
-make run       # build and launch
+make run       # build and launch, replacing any running copy
 make release   # build/Corvo.zip, the release artifact
 ```
+
+Everything lands under `build/`, including the Debug build. Xcode would
+otherwise derive that location from the project's path, which gives every git
+worktree its own — and `make run` would launch every copy it could find.
 
 The only runtime dependency is [GRDB.swift](https://github.com/groue/GRDB.swift),
 resolved by Swift Package Manager.
