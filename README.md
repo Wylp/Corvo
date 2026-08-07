@@ -66,6 +66,19 @@ just stops one step short: the clipping goes onto your clipboard and Corvo tells
 you so, and you paste it yourself. Capture, search, tags and pinning need no
 permission at all.
 
+### Hiding the menu bar icon
+
+**Settings → Show icon in menu bar** takes Corvo's icon out of the menu bar.
+⌘-dragging the icon out of the menu bar does the same thing, and is remembered
+the same way.
+
+Corvo keeps running with the icon gone, and `⌘⇧V` still opens the panel — but
+the menu is where Settings and Quit live, so with no icon there is one way back:
+
+**Open Corvo again** — from the Applications folder, Spotlight, anywhere. The
+copy already running answers by opening Settings, where the switch is. Launching
+it twice never gives you two Corvos.
+
 ## Keyboard
 
 The panel is a keyboard tool. Every shortcut is printed along its bottom edge,

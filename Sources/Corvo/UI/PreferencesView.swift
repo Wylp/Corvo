@@ -35,6 +35,10 @@ struct PreferencesView: View {
     @State private var blocklistText: String
     @State private var loginError: String?
     @State private var isConfirmingCut = false
+    /// Hiding the icon takes the app's only visible control away, so it is asked
+    /// about rather than just done — the alert is where the way back is written
+    /// down, at the moment the user still has both.
+    @State private var isConfirmingHide = false
     /// Re-read when the app comes back to the front, because the user grants
     /// this in another application. Recomputing the body also re-reads
     /// `LoginItem`, which the user can change in the same trip.
@@ -90,6 +94,26 @@ struct PreferencesView: View {
                 Pinned and tagged clippings are never deleted. Corvo has no undo.
                 """)
         }
+        .alert("Hide the menu bar icon?", isPresented: $isConfirmingHide) {
+            // No `role: .destructive` and no `.defaultAction` on Cancel: nothing
+            // is deleted here and nothing is lost, so the confirmation exists to
+            // hand over the two routes back, not to talk anyone out of it. Hide
+            // is the default button because it is what the user just asked for.
+            Button("Cancel", role: .cancel) {}
+            Button("Hide") { prefs.showsMenuBarIcon = false }
+        } message: {
+            // Both routes, because either one alone leaves a hole: the shortcut
+            // opens the history but never Settings, and the reopen never shows
+            // the history. Named as the things the user does, not as the
+            // mechanisms — "open Corvo again" is a Finder double-click, a
+            // Spotlight hit or a Dock alias, and all three land in the same
+            // place.
+            Text("""
+                Corvo keeps running and ⌘⇧V still opens the history. To get \
+                Settings back — or to bring the icon back — open Corvo again \
+                from the Applications folder.
+                """)
+        }
     }
 
     // MARK: - Startup
@@ -107,7 +131,35 @@ struct PreferencesView: View {
                 notice("exclamationmark.triangle.fill", .red,
                        Text("macOS refused the change: \(loginError)"))
             }
+            Toggle("Show icon in menu bar", isOn: showsMenuBarIcon)
+            if !prefs.showsMenuBarIcon {
+                // Not a warning: the user asked for this and Corvo is working
+                // exactly as told. It is on screen because the alert that said it
+                // is gone, and this is the one screen that can still say it —
+                // reached, by then, the way the sentence describes.
+                caption("Corvo is running with no icon. ⌘⇧V opens the history; opening Corvo again opens Settings.")
+            }
         }
+    }
+
+    /// Reads `prefs` on every pass rather than mirroring it, like `launchAtLogin`
+    /// above and for a second reason as well: `MenuBarExtra`'s `isInserted` writes
+    /// the same key when the icon is ⌘-dragged out of the menu bar, so a mirrored
+    /// copy would show an icon that is no longer there.
+    ///
+    /// Switching it *on* is immediate — an icon appearing needs no warning. Only
+    /// the hide goes through the alert, and only the alert's Hide button writes,
+    /// so a cancelled hide leaves nothing behind to undo.
+    private var showsMenuBarIcon: Binding<Bool> {
+        Binding(get: { prefs.showsMenuBarIcon }, set: { setShowsMenuBarIcon($0) })
+    }
+
+    private func setShowsMenuBarIcon(_ shown: Bool) {
+        guard shown else {
+            isConfirmingHide = true
+            return
+        }
+        prefs.showsMenuBarIcon = true
     }
 
     /// Reads the system on every pass instead of mirroring it into `@State`.

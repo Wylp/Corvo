@@ -131,3 +131,42 @@ private func makePrefs() -> Preferences {
     prefs.maxAgeDays = 7
     #expect(prefs.retentionPolicy == RetentionPolicy(maxItems: 2_500, maxAge: 7 * 86400))
 }
+
+// MARK: - The menu bar icon is the app's only visible control
+
+/// The upgrade. Every existing install has never written this key, and the wrong
+/// read — `defaults.bool(forKey:)`, which answers `false` for an absent key —
+/// would launch them with no icon, no Dock icon and no window: an app that looks
+/// uninstalled and is running. Absent has to mean the behaviour they already had.
+@Test func anUnsetMenuBarIconPreferenceShowsTheIcon() {
+    #expect(makePrefs().showsMenuBarIcon)
+}
+
+@Test func theMenuBarIconPreferenceSurvivesBothWays() {
+    let prefs = makePrefs()
+
+    prefs.showsMenuBarIcon = false
+    #expect(!prefs.showsMenuBarIcon)
+
+    prefs.showsMenuBarIcon = true
+    #expect(prefs.showsMenuBarIcon)
+}
+
+/// The key is a contract with a second reader. `MenuBarExtra`'s `isInserted` is
+/// bound to `@AppStorage(Preferences.showsMenuBarIconKey)`, which goes to
+/// `UserDefaults` directly and never through this type — so what `Preferences`
+/// writes has to be what plain `bool(forKey:)` reads back under that name, or
+/// the switch in Settings and the icon in the menu bar answer to two different
+/// settings that merely look like one.
+@Test func theStoredValueIsWhatAppStorageWouldRead() {
+    let defaults = UserDefaults(suiteName: UUID().uuidString)!
+    let prefs = Preferences(defaults: defaults)
+
+    prefs.showsMenuBarIcon = false
+    #expect(defaults.object(forKey: Preferences.showsMenuBarIconKey) as? Bool == false)
+
+    // And the other direction: the icon dragged out of the menu bar is
+    // `isInserted` writing this key itself, with no help from `Preferences`.
+    defaults.set(true, forKey: Preferences.showsMenuBarIconKey)
+    #expect(prefs.showsMenuBarIcon)
+}
