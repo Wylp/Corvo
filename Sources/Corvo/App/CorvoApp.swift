@@ -72,7 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // The panel is hidden, not destroyed, so nothing else would ever
                 // put the sheet away: it would be back on top the next time the
                 // panel opens, over a window that can no longer dismiss it.
-                clearTransientState: { [weak model] in model?.sheet = nil })
+                clearTransientState: { [weak model] in model?.sheet = nil },
+                resetToDefaultView: { [weak model] in model?.resetView() })
 
             // The answer typed into the notification comes back here. It goes
             // through the model rather than the repository so the panel redraws

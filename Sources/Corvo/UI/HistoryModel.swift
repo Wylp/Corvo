@@ -182,6 +182,40 @@ final class HistoryModel {
         extending ? extendSelection(step) : move(step)
     }
 
+    /// Puts the panel back on the whole history, which is the view it is worth
+    /// opening on: the next thing to paste is far more often the thing just
+    /// copied than the one behind a filter set for a job already done.
+    ///
+    /// It has to be said out loud because the panel is hidden and not destroyed,
+    /// so a search and a sidebar row outlive the task they were typed for and
+    /// narrow the list the next time ⌘⇧V opens it. Clearing them by hand is
+    /// three separate places — the field, the source row and the tag row, each
+    /// of which only clears itself — and none of them announces that it is what
+    /// is hiding the clipping being looked for.
+    ///
+    /// Assigns only what is actually set: each of the three reloads in `didSet`,
+    /// and writing a value one of them already holds rebuilds the list for an
+    /// answer it just gave.
+    ///
+    /// The cursor goes back to the newest clipping, and a ⇧-extended run does
+    /// not outlive the panel either: a run restored under a cursor the user has
+    /// not put there is a paste of five clippings where one was meant.
+    ///
+    /// Written out rather than delegated to `select`, which is guarded on the
+    /// list having a row to land on and so does nothing at all on an empty
+    /// history — leaving exactly the run this is here to drop. `reload` happens
+    /// to clear it as well, and a reset that is only correct because of what
+    /// another method does on its way past is a reset that breaks the day that
+    /// method stops doing it.
+    func resetView() {
+        if !query.isEmpty { query = "" }
+        if selectedSource != nil { selectedSource = nil }
+        if selectedTag != nil { selectedTag = nil }
+        selectedIndex = 0
+        markedIds.removeAll()
+        anchorId = nil
+    }
+
     func tags(for item: ClipItem) -> [Tag] {
         guard let id = item.id else { return [] }
         return (try? repo.tags(forItem: id)) ?? []

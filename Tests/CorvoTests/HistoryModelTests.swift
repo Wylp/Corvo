@@ -262,3 +262,83 @@ private func textItem(_ s: String) -> CapturedItem {
     #expect(model.tagChoices(for: model.selectedItems, matching: "").map(\.name) == ["half"])
     #expect(model.tagsOnAll(model.selectedItems) == ["both"])
 }
+
+/// The panel is hidden and not destroyed, so everything narrowing the list
+/// outlives the task it was set for. This is the one call that puts all of it
+/// back, and it has to be all of it: a reset that left the search box full would
+/// be the same complaint one field over.
+@MainActor @Test func openingThePanelPutsBackTheWholeHistory() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let warp = ItemSource(bundleId: "dev.warp.Warp-Stable", name: "Warp")
+    let tagged = try repo.insert(textItem("alpha"), source: warp, now: t0)
+    try repo.insert(textItem("beta"), source: warp, now: t0.addingTimeInterval(1))
+    try repo.insert(textItem("gamma"), source: nil, now: t0.addingTimeInterval(2))
+    try repo.addTag(named: "keep", to: tagged)
+    model.reload()
+    let tagId = try #require(model.tags.first?.id)
+
+    // A query that actually excludes, so clearing it has to show in the list and
+    // not only in the field: "a" matches all three, and a reset measured against
+    // it would pass on an assignment that never reached the search.
+    model.query = "alph"
+    model.selectedSource = warp.bundleId
+    model.selectedTag = tagId
+    #expect(model.items.map(\.text) == ["alpha"])
+
+    model.resetView()
+
+    #expect(model.query.isEmpty)
+    #expect(model.selectedSource == nil)
+    #expect(model.selectedTag == nil)
+    #expect(model.activeFilter == .everything)
+    #expect(model.items.map(\.text) == ["gamma", "beta", "alpha"])
+    // The newest clipping, not wherever the cursor was left: it is the one the
+    // panel is most often opened to reach.
+    #expect(model.selectedIndex == 0)
+}
+
+/// A run is as much a filter on what ⏎ acts on as the sidebar is on what the
+/// list shows, and it is the more expensive of the two to inherit: a restored
+/// run pastes five clippings where the cursor promised one.
+@MainActor @Test func openingThePanelDropsARunLeftOpen() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try repo.insert(textItem("a"), source: nil, now: t0)
+    try repo.insert(textItem("b"), source: nil, now: t0.addingTimeInterval(1))
+    try repo.insert(textItem("c"), source: nil, now: t0.addingTimeInterval(2))
+    model.reload()
+
+    model.extendSelection(to: 2)
+    #expect(model.selectedItems.count == 3)
+
+    model.resetView()
+
+    #expect(model.selectedItems.map(\.text) == ["c"])
+    #expect(model.selectedIndex == 0)
+}
+
+/// The reset has to hold on a history with nothing in it too. `select` is
+/// guarded on there being a row to land on, so a reset that leaned on it would
+/// leave a run in place exactly where there is no card left to justify one.
+@MainActor @Test func openingThePanelOnAnEmptyHistoryStillDropsTheRun() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try repo.insert(textItem("a"), source: nil, now: t0)
+    try repo.insert(textItem("b"), source: nil, now: t0.addingTimeInterval(1))
+    model.reload()
+    model.extendSelection(to: 1)
+    #expect(model.selectedItems.count == 2)
+
+    // Everything the run pointed at, gone from under it.
+    for item in model.items { model.delete(item) }
+    #expect(model.items.isEmpty)
+
+    model.resetView()
+
+    #expect(model.selectedItems.isEmpty)
+    #expect(model.selectedIndex == 0)
+}

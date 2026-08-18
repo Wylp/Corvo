@@ -76,7 +76,18 @@ struct HistoryView: View {
         } else {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
+                    // Lazy, so the row builds the cards it is showing and not
+                    // every clipping the query returned. `HStack` builds all of
+                    // them, and a built card is not free: it asks the database
+                    // for its tags, tokenises up to 1,200 characters, and an
+                    // image card opens its blob off disk with nothing caching
+                    // the result.
+                    //
+                    // The row reads `selectedIndex`, so every arrow key rebuilds
+                    // whatever it builds. `theCarouselOnlyAsksAboutTheCardsItIsShowing`
+                    // measures the difference on a 200-clipping history: two
+                    // hundred tag queries per arrow press eagerly, four lazily.
+                    LazyHStack(spacing: 12) {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                             ItemCard(item: item, tags: model.tags(for: item),
                                      isSelected: index == model.selectedIndex,
