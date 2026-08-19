@@ -85,14 +85,19 @@ final class ItemRepository {
         }
 
         var conditions: [String] = []
-        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !query.isEmpty {
-            // ponytail: LIKE with a scan. See the index comment in AppDatabase.
+        // One condition per word, joined with AND, rather than one match on the
+        // whole line. Matching the line means the words have to appear together
+        // and in the order they were typed, which is not how a search box is
+        // used: "g cloud" found nothing in a history that had `gcloud auth
+        // login` in it, because the space the user put in was being required of
+        // the text as well. Split, each word only has to be in there somewhere,
+        // and typing another word narrows rather than starts over.
+        //
+        // ponytail: LIKE with a scan. See the index comment in AppDatabase.
+        for word in text.split(whereSeparator: \.isWhitespace) {
             conditions.append(
                 "(item.text LIKE ? OR item.sourceName LIKE ? OR item.label LIKE ?)")
-            args.append("%\(query)%")
-            args.append("%\(query)%")
-            args.append("%\(query)%")
+            args.append(contentsOf: repeatElement("%\(word)%", count: 3))
         }
         if let sourceBundleId {
             conditions.append("item.sourceBundleId = ?")

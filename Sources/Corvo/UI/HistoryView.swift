@@ -29,6 +29,8 @@ struct HistoryView: View {
         VStack(spacing: 0) {
             searchField
             Divider()
+            tagStrip
+            Divider()
             HStack(spacing: 0) {
                 FilterSidebar(model: model)
                 Divider()
@@ -37,7 +39,12 @@ struct HistoryView: View {
             Divider()
             shortcutRail
         }
-        .frame(minWidth: 700, minHeight: 380)
+        // The minimum is what it takes to draw a whole card under the chrome:
+        // 48 of search, 30 of tags, 30 of rail, the rules between them, and the
+        // 250pt card inside its own padding. Below that the panel would clip the
+        // one thing it exists to show, so the number moved when the strip was
+        // added rather than staying at a figure that was true before it.
+        .frame(minWidth: 700, minHeight: 410)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .background(shortcuts)
@@ -67,6 +74,102 @@ struct HistoryView: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 48)
+    }
+
+    /// Tags across the top instead of underneath the apps in the sidebar.
+    ///
+    /// The two lists shared one 190pt column and they do not grow alike. Apps
+    /// arrive on their own — one appears for every place anything has ever been
+    /// copied from, and nothing the user does adds or removes them — while tags
+    /// are put there by hand and stay few. So the list that grows is the one
+    /// that pushed the other off the bottom of the panel, and the one pushed off
+    /// is the one somebody built on purpose. Thirteen apps was enough.
+    ///
+    /// Across the top they stop competing for the same space: the column is free
+    /// to be as long as the apps make it, and the tags sit in a row that is read
+    /// in one pass rather than scrolled to.
+    ///
+    /// The row stays even with no tags in it, for the reason the sidebar's tag
+    /// section used to: it carries the only way into the tag manager, and a user
+    /// with no tags yet is exactly the one who needs to find it.
+    private var tagStrip: some View {
+        HStack(spacing: 0) {
+            if model.tags.isEmpty {
+                // Says what the empty row is for, in the place the tags will
+                // appear, rather than leaving a bare band with a lone button at
+                // the end of it — which is what a user with no tags saw, and
+                // reads as something broken rather than something not used yet.
+                //
+                // Quiet on purpose, and it names the key: the same reasoning as
+                // the card's own "Name this (⌘R)". A hint the user has to
+                // already know is not a hint.
+                Text("Tags you add with ⌘T show up here")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 16)
+                Spacer(minLength: 8)
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(model.tags) { tag in tagChip(tag) }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .scrollIndicators(.never)
+            }
+            editTagsButton
+        }
+        .frame(height: 30)
+        .accessibilityLabel("Tags")
+    }
+
+    /// A capsule, matching the tags drawn on the cards: the same thing named the
+    /// same way in both places, so filling one is visibly the same object as the
+    /// one printed on the clipping.
+    ///
+    /// Clicking the active chip clears the filter, which is the behaviour the
+    /// sidebar rows already had — and the fill is what makes clicking it again a
+    /// sensible thing to try.
+    private func tagChip(_ tag: Tag) -> some View {
+        let isOn = model.selectedTag == tag.id
+        return Button {
+            model.selectedTag = isOn ? nil : tag.id
+        } label: {
+            HStack(spacing: 5) {
+                // The glyph carries the rule, the colour carries the tag's own
+                // colour, exactly as in the sidebar this replaces.
+                Image(systemName: tag.rule.isActive ? "bolt.fill" : "tag.fill")
+                    .font(.caption2)
+                    .foregroundStyle(TagColor.named(tag.color)?.color ?? .secondary)
+                Text(tag.name).lineLimit(1)
+            }
+            .font(.callout)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            .background(isOn ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06),
+                        in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    /// Pinned outside the scroll view rather than trailing the chips, so it does
+    /// not walk off the edge once there are more tags than fit: it is the only
+    /// route to the tag manager, and a route that scrolls away is one a user has
+    /// to already know about to reach.
+    private var editTagsButton: some View {
+        Button { model.sheet = .tags } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.caption)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Edit tags and rules (⌘⇧T)")
+        .accessibilityLabel("Edit tags and rules")
+        .padding(.trailing, 12)
     }
 
     @ViewBuilder

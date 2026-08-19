@@ -223,16 +223,17 @@ final class HistoryModel {
 
     // MARK: - Walking the sidebar
 
-    /// One position in the sidebar. The sidebar draws two lists and the two
-    /// filters they set can both be on at once, but a cursor is one place, so
-    /// the keyboard sees them as a single column with "everything" at the top.
+    /// One position in the filters. They are drawn in two places — the apps down
+    /// the sidebar, the tags across the top — and the two they set can both be on
+    /// at once, but a cursor is one place, so the keyboard sees all of them as a
+    /// single sequence with "everything" at the head of it.
     enum Filter: Equatable {
         case everything
         case source(String)
         case tag(Int64)
     }
 
-    /// The column ⌘↑/⌘↓ walks, in the order the sidebar draws it.
+    /// The sequence ⌘↑/⌘↓ walks: everything, then the apps, then the tags.
     private var filters: [Filter] {
         [.everything]
             + sources.map { Filter.source($0.bundleId) }
