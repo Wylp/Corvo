@@ -194,7 +194,9 @@ struct HistoryView: View {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                             ItemCard(item: item, tags: model.tags(for: item),
                                      isSelected: index == model.selectedIndex,
-                                     isMarked: model.isMarked(item), blobs: blobs)
+                                     isMarked: model.isMarked(item),
+                                     number: HistoryModel.number(forIndex: index),
+                                     blobs: blobs)
                                 .id(item.id)
                                 .onTapGesture(count: 2) { onPaste([item]) }
                                 .onTapGesture { model.select(index) }
@@ -324,6 +326,20 @@ struct HistoryView: View {
                 model.sheet = .naming
             }
             shortcutButton("t", modifiers: [.command, .shift]) { model.sheet = .tags }
+            // ⌘1 through ⌘9 paste the card wearing that number, rather than
+            // moving the cursor onto it. Selecting would save nothing: the
+            // arrows already do that, and what the numbers buy is skipping the
+            // walk entirely — see it, press it, it is pasted.
+            //
+            // One clipping and not the run, for the same reason a double-click
+            // is one clipping: a key that names a specific card is pointing at
+            // that card, whatever else happens to be marked.
+            ForEach(1...HistoryModel.numberedCards, id: \.self) { number in
+                shortcutButton(KeyEquivalent(Character("\(number)")), modifiers: .command) {
+                    guard let item = model.item(atNumber: number) else { return }
+                    onPaste([item])
+                }
+            }
         }
         .opacity(0)
         .frame(width: 0, height: 0)

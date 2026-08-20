@@ -216,6 +216,43 @@ final class HistoryModel {
         anchorId = nil
     }
 
+    // MARK: - Reaching a card by number
+
+    /// How far the number keys reach. Nine because that is how many digits sit
+    /// under one hand without a modifier of their own, and because ⌘0 is not the
+    /// tenth of anything on this platform — it is "reset" nearly everywhere it
+    /// is bound, which is the wrong promise on a key that pastes.
+    nonisolated static let numberedCards = 9
+
+    /// The clipping ⌘<number> means, or `nil` when the list is shorter than that.
+    ///
+    /// A position and not an identity: the number on a card says where it is
+    /// sitting right now, so it follows the search and the filter rather than
+    /// naming one clipping forever. That is the version that can be read off the
+    /// screen — the alternative is a number that is correct only for a list the
+    /// user is no longer looking at.
+    ///
+    /// Lives here rather than in the view because "which clipping is the third
+    /// one" is a question with a wrong answer, and an off-by-one that pastes the
+    /// neighbour is the kind that gets noticed after it has been pasted.
+    func item(atNumber number: Int) -> ClipItem? {
+        // Bounded by the reach and not only by the list. Checking the list alone
+        // answers for a number no card is wearing and no key can send — which is
+        // fine right up until something else learns to ask, and then it is a
+        // paste of a clipping the user was never shown.
+        guard let index = Self.number(forIndex: number - 1).map({ $0 - 1 }),
+              items.indices.contains(index) else { return nil }
+        return items[index]
+    }
+
+    /// The number to print on the card at `index`, or `nil` past the reach. The
+    /// inverse of `item(atNumber:)`, and it is spelled out rather than left to
+    /// each caller so the badge on the card and the key that fires can never
+    /// disagree about which is which.
+    nonisolated static func number(forIndex index: Int) -> Int? {
+        index < numberedCards ? index + 1 : nil
+    }
+
     func tags(for item: ClipItem) -> [Tag] {
         guard let id = item.id else { return [] }
         return (try? repo.tags(forItem: id)) ?? []

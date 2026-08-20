@@ -342,3 +342,38 @@ private func textItem(_ s: String) -> CapturedItem {
     #expect(model.selectedItems.isEmpty)
     #expect(model.selectedIndex == 0)
 }
+
+/// The numbers on the cards and the keys that fire have to mean the same thing,
+/// and the failure mode if they do not is a paste of the neighbouring clipping —
+/// noticed after it has landed in whatever the user was writing.
+@MainActor @Test func theNumberOnACardIsTheKeyThatPastesIt() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for i in 0..<12 {
+        try repo.insert(textItem("clipping \(i)"), source: nil,
+                        now: t0.addingTimeInterval(Double(i)))
+    }
+    model.reload()
+    // Newest first, so the newest clipping is the one wearing ⌘1.
+    #expect(model.items.first?.text == "clipping 11")
+
+    for index in model.items.indices {
+        guard let number = HistoryModel.number(forIndex: index) else { continue }
+        #expect(model.item(atNumber: number)?.id == model.items[index].id)
+    }
+
+    #expect(model.item(atNumber: 1)?.text == "clipping 11")
+    #expect(model.item(atNumber: 9)?.text == "clipping 3")
+    // Past the ninth the cards wear nothing, and nothing is what the key finds.
+    #expect(HistoryModel.number(forIndex: 9) == nil)
+    #expect(model.item(atNumber: 10) == nil)
+    #expect(model.item(atNumber: 0) == nil)
+
+    // The number is a position, so it follows the filter rather than naming one
+    // clipping for good.
+    model.query = "clipping 4"
+    #expect(model.item(atNumber: 1)?.text == "clipping 4")
+    // And it does not reach past the end of a list the search made short.
+    #expect(model.item(atNumber: 2) == nil)
+}
