@@ -249,6 +249,13 @@ struct HistoryView: View {
         HStack(spacing: 14) {
             KeycapHint(key: "⏎", label: "Paste")
             KeycapHint(key: "⌘C", label: "Copy")
+            // Third of the three ways out holding a clipping, so it sits with
+            // the other two. The number is written on each card as well, and
+            // that turned out not to be enough on its own: the rail is where a
+            // person looks to find out what the keys do, and a shortcut absent
+            // from it reads as one that does not exist. Being in both places
+            // costs one hint in a row that has the room.
+            KeycapHint(key: "⌘1-9", label: "Paste that card")
             // Third because it changes what the first two act on, so it reads
             // as a qualifier of them rather than another thing to do — and the
             // label has to say so. Every other hint in this rail names a key
