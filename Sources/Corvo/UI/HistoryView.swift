@@ -300,6 +300,17 @@ struct HistoryView: View {
             // from being one more thing the search field eats.
             shortcutButton(.upArrow, modifiers: .command) { model.moveFilter(-1) }
             shortcutButton(.downArrow, modifiers: .command) { model.moveFilter(1) }
+            // Registered with the modifier, exactly like the pair above, and not
+            // read off `NSEvent.modifierFlags` inside the bare-arrow handler.
+            // The bare registration is not offered ⌘+arrow at all: measured in
+            // `commandArrowsReachTheFiltersAndLeaveTheBareArrowsAlone`, where a
+            // ⌘→ posted at the window moved neither the cursor nor the filter
+            // until this pair existed. The ⇧ arrows do work that way, which is
+            // what made it look like the rule — it is not: ⇧ is folded into the
+            // key's own characters, ⌘ makes the event a key equivalent, and only
+            // an equivalent registered with ⌘ is ever asked about it.
+            shortcutButton(.leftArrow, modifiers: .command) { model.moveTagFilter(-1) }
+            shortcutButton(.rightArrow, modifiers: .command) { model.moveTagFilter(1) }
             shortcutButton(.return) { pasteSelected() }
             // Wins over the search field's own ⌘C: a shortcut registered on the
             // window's views is consulted before the menu item the field relies
@@ -352,6 +363,17 @@ struct HistoryView: View {
                 }
             }
         }
+        // Off while a sheet is up. Every key in this group acts on the list
+        // behind the sheet, and a sheet is a question with the answer still
+        // being typed: ⌘1 pasted a clipping and took the panel off screen from
+        // under an open tag editor, and ⌘→ moved the filter under it. Measured
+        // in `theShortcutsDoNotReachThroughAnOpenSheet` — a presented sheet does
+        // not stop the presenter's shortcuts on its own.
+        //
+        // On the group rather than on the keys this change added, because the
+        // ones already here reach through it in exactly the same way and a guard
+        // per key is a guard somebody forgets on the tenth.
+        .disabled(model.sheet != nil)
         .opacity(0)
         .frame(width: 0, height: 0)
     }
@@ -566,9 +588,7 @@ struct HistoryView: View {
     /// `NSEvent.modifierFlags` is the state right now, which during the handler
     /// for the key that was just pressed is the state that key was pressed with.
     private func arrow(_ step: Int) {
-        let flags = NSEvent.modifierFlags
-        model.arrow(step, extending: flags.contains(.shift),
-                    acrossTags: flags.contains(.command))
+        model.arrow(step, extending: NSEvent.modifierFlags.contains(.shift))
     }
 
     private func pasteSelected() {

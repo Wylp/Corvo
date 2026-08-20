@@ -173,20 +173,17 @@ final class HistoryModel {
         extendSelection(to: min(max(selectedIndex + step, 0), items.count - 1))
     }
 
-    /// One arrow press. The view reads which modifiers were down, the model owns
-    /// what each combination means — rather than one keyboard shortcut per
-    /// combination, which is what this used to be. SwiftUI does not tell a bare
-    /// arrow apart from ⇧+arrow when both are registered: the ⇧ one takes both,
-    /// and every plain arrow press started extending a run. Registering ⌘+arrow
-    /// separately would have walked into the same trap on the other side.
+    /// One arrow press. The view reads whether ⇧ was down, the model owns what
+    /// each of the two means — rather than two keyboard shortcuts on the same
+    /// key. SwiftUI does not tell a bare arrow apart from ⇧+arrow when both are
+    /// registered: the ⇧ one takes both, and every plain arrow press started
+    /// extending a run.
     ///
-    /// ⌘ wins over ⇧, so ⌘⇧← is a filter step and not an extension. The
-    /// combination has to mean one thing, and "extend the run into the tags" is
-    /// not a thing.
-    /// `acrossTags` defaults to false so that every caller written before the
-    /// tag strip existed still says what it meant.
-    func arrow(_ step: Int, extending: Bool, acrossTags: Bool = false) {
-        if acrossTags { return moveTagFilter(step) }
+    /// ⌘+arrow is the other way round and does not belong here: it never reaches
+    /// a bare registration at all, so the filters register it themselves. ⇧ is
+    /// folded into the characters of the key, while ⌘ turns the press into a key
+    /// equivalent, and only an equivalent registered with ⌘ is ever offered one.
+    func arrow(_ step: Int, extending: Bool) {
         extending ? extendSelection(step) : move(step)
     }
 
@@ -248,9 +245,9 @@ final class HistoryModel {
         // answers for a number no card is wearing and no key can send — which is
         // fine right up until something else learns to ask, and then it is a
         // paste of a clipping the user was never shown.
-        guard let index = Self.number(forIndex: number - 1).map({ $0 - 1 }),
-              items.indices.contains(index) else { return nil }
-        return items[index]
+        guard (1...Self.numberedCards).contains(number),
+              items.indices.contains(number - 1) else { return nil }
+        return items[number - 1]
     }
 
     /// The number to print on the card at `index`, or `nil` past the reach. The
@@ -258,7 +255,12 @@ final class HistoryModel {
     /// each caller so the badge on the card and the key that fires can never
     /// disagree about which is which.
     nonisolated static func number(forIndex index: Int) -> Int? {
-        index < numberedCards ? index + 1 : nil
+        // Bounded at both ends. Checking only the ceiling answered `0` for index
+        // -1 and `-1` for index -2, which is not a key anybody can press and not
+        // a number any card wears — the inverse silently stopped being an
+        // inverse below zero. Nothing passes a negative index today; the pair
+        // has to hold for the one that eventually does.
+        (0..<numberedCards).contains(index) ? index + 1 : nil
     }
 
     func tags(for item: ClipItem) -> [Tag] {
@@ -277,6 +279,12 @@ final class HistoryModel {
     /// does: an arrow held down should come to rest at the end of a list, not
     /// reappear at the other end of it.
     private static func stepping<T: Equatable>(_ list: [T?], by step: Int, from here: T?) -> T? {
+        // A filter set to something no longer in the list — an app whose last
+        // clipping was just pruned — is treated as the head, which is that axis
+        // switched off. It is where the filter effectively already is: it is
+        // matching nothing and showing nothing. So stepping back from it turns
+        // it off for real and stepping forward enters the list at the top,
+        // rather than resuming from a position that no longer exists.
         let index = list.firstIndex(of: here) ?? 0
         return list[min(max(index + step, 0), list.count - 1)]
     }

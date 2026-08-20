@@ -226,39 +226,6 @@ private func textItem(_ s: String) -> CapturedItem {
     #expect(model.selectedTag == nil)
 }
 
-/// One registration per key, the modifiers read at the moment of the press. The
-/// three meanings have to stay apart, and ⌘ has to win over ⇧: extending a run
-/// into the tag strip is not a thing.
-@MainActor @Test func oneArrowKeyCarriesThreeMeanings() throws {
-    let (model, repo, dir) = try makeModel()
-    defer { try? FileManager.default.removeItem(at: dir) }
-
-    let warp = ItemSource(bundleId: "dev.warp.Warp-Stable", name: "Warp")
-    let tagged = try repo.insert(textItem("a"), source: warp, now: t0)
-    try repo.insert(textItem("b"), source: warp, now: t0.addingTimeInterval(1))
-    try repo.addTag(named: "keep", to: tagged)
-    model.reload()
-    let tagId = try #require(model.tags.first?.id)
-
-    // Bare: the cursor moves and nothing gets marked.
-    model.arrow(1, extending: false, acrossTags: false)
-    #expect(model.selectedIndex == 1)
-    #expect(model.selectedItems.count == 1)
-
-    // ⇧: the run grows, the cursor stays where it landed.
-    model.arrow(-1, extending: true, acrossTags: false)
-    #expect(model.selectedItems.count == 2)
-
-    // ⌘: the tag filter moves, and it is not an extension of the run.
-    model.arrow(1, extending: false, acrossTags: true)
-    #expect(model.selectedTag == tagId)
-
-    // ⌘⇧: still the filter, never the run.
-    model.selectedTag = nil
-    model.arrow(1, extending: true, acrossTags: true)
-    #expect(model.selectedTag == tagId)
-}
-
 /// The sheet acts on the selection, so both of its halves have to. A row that
 /// reached one clipping while typing the same name reached five would be the
 /// sheet contradicting itself.
@@ -332,8 +299,6 @@ private func textItem(_ s: String) -> CapturedItem {
     model.resetView()
 
     #expect(model.query.isEmpty)
-    #expect(model.selectedSource == nil)
-    #expect(model.selectedTag == nil)
     #expect(model.selectedSource == nil)
     #expect(model.selectedTag == nil)
     #expect(model.items.map(\.text) == ["gamma", "beta", "alpha"])
@@ -419,4 +384,65 @@ private func textItem(_ s: String) -> CapturedItem {
     #expect(model.item(atNumber: 1)?.text == "clipping 4")
     // And it does not reach past the end of a list the search made short.
     #expect(model.item(atNumber: 2) == nil)
+}
+
+/// The two halves of the numbering have to be inverses of each other across the
+/// whole integer line, not only over the nine values anything currently passes.
+/// Bounded at one end only, they stopped agreeing below zero: index -1 came back
+/// as number 0, which is not a key and not a badge.
+@MainActor @Test func theNumbersAndTheCardsAgreeOutsideTheirRangeToo() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for i in 0..<3 {
+        try repo.insert(textItem("c\(i)"), source: nil, now: t0.addingTimeInterval(Double(i)))
+    }
+    model.reload()
+
+    #expect(HistoryModel.number(forIndex: -1) == nil)
+    #expect(HistoryModel.number(forIndex: -99) == nil)
+    #expect(HistoryModel.number(forIndex: 0) == 1)
+    #expect(HistoryModel.number(forIndex: HistoryModel.numberedCards - 1) == HistoryModel.numberedCards)
+    #expect(HistoryModel.number(forIndex: HistoryModel.numberedCards) == nil)
+
+    #expect(model.item(atNumber: 0) == nil)
+    #expect(model.item(atNumber: -3) == nil)
+    #expect(model.item(atNumber: HistoryModel.numberedCards + 1) == nil)
+    // Inside the reach but past the end of a short list.
+    #expect(model.item(atNumber: 4) == nil)
+    #expect(model.item(atNumber: 1)?.text == "c2")
+}
+
+/// A filter can outlive the thing it points at: the prune runs on a timer, and
+/// the last clipping from an app can go while that app is the one being filtered
+/// by. What the keys do from there is a decision, so it is written down.
+@MainActor @Test func aFilterLeftPointingAtNothingIsWalkedAsIfItWereOff() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let warp = ItemSource(bundleId: "dev.warp.Warp-Stable", name: "Warp")
+    let safari = ItemSource(bundleId: "com.apple.Safari", name: "Safari")
+    let onlyWarpOne = try repo.insert(textItem("w"), source: warp, now: t0)
+    try repo.insert(textItem("s"), source: safari, now: t0.addingTimeInterval(1))
+    model.reload()
+
+    model.selectedSource = warp.bundleId
+    #expect(model.items.map(\.text) == ["w"])
+
+    // The app loses its last clipping while it is the filter.
+    model.delete(try #require(model.items.first))
+    #expect(!model.sources.contains { $0.bundleId == warp.bundleId })
+    #expect(model.selectedSource == warp.bundleId)
+    _ = onlyWarpOne
+
+    // Forward enters the list at the top rather than resuming from a position
+    // that is not there any more.
+    model.moveFilter(1)
+    #expect(model.selectedSource == safari.bundleId)
+
+    // And back off it turns the axis off, which is where a filter matching
+    // nothing already effectively was.
+    model.selectedSource = warp.bundleId
+    model.moveFilter(-1)
+    #expect(model.selectedSource == nil)
 }
