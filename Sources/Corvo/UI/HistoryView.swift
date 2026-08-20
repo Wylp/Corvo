@@ -269,7 +269,11 @@ struct HistoryView: View {
             KeycapHint(key: "⌘R", label: "Name")
             KeycapHint(key: "⌘T", label: "Tag")
             KeycapHint(key: "⌘⇧T", label: "Edit tags")
-            KeycapHint(key: "⌘↑↓", label: "Filter")
+            // Two axes now, so two hints: the column of apps runs down, the row
+            // of tags runs across, and each pair of keys points the way its own
+            // list is drawn.
+            KeycapHint(key: "⌘↑↓", label: "Apps")
+            KeycapHint(key: "⌘←→", label: "Tags")
             KeycapHint(key: "⌘⌫", label: "Delete")
             Spacer(minLength: 8)
             KeycapHint(key: "esc", label: "Close")
@@ -562,7 +566,9 @@ struct HistoryView: View {
     /// `NSEvent.modifierFlags` is the state right now, which during the handler
     /// for the key that was just pressed is the state that key was pressed with.
     private func arrow(_ step: Int) {
-        model.arrow(step, extending: NSEvent.modifierFlags.contains(.shift))
+        let flags = NSEvent.modifierFlags
+        model.arrow(step, extending: flags.contains(.shift),
+                    acrossTags: flags.contains(.command))
     }
 
     private func pasteSelected() {

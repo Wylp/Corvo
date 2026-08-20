@@ -187,7 +187,7 @@ private func textItem(_ s: String) -> CapturedItem {
 
 /// ⌘↑/⌘↓ down the sidebar. The two lists it draws are one column to the
 /// keyboard, with "everything" at the top and the tags after the apps.
-@MainActor @Test func theFilterCursorWalksTheAppsThenTheTags() throws {
+@MainActor @Test func eachPairOfKeysWalksItsOwnAxisAndLeavesTheOtherAlone() throws {
     let (model, repo, dir) = try makeModel()
     defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -197,24 +197,66 @@ private func textItem(_ s: String) -> CapturedItem {
     model.reload()
     let tagId = try #require(model.tags.first?.id)
 
-    #expect(model.activeFilter == .everything)
+    // ⌘↓ down the apps.
+    #expect(model.selectedSource == nil)
+    #expect(model.selectedTag == nil)
     model.moveFilter(1)
-    #expect(model.activeFilter == .source(warp.bundleId))
-    model.moveFilter(1)
-    #expect(model.activeFilter == .tag(tagId))
+    #expect(model.selectedSource == warp.bundleId)
     // The end of the column, not the top of it again.
     model.moveFilter(1)
-    #expect(model.activeFilter == .tag(tagId))
+    #expect(model.selectedSource == warp.bundleId)
 
-    // Landing on a row clears the other filter, because the cursor is one place.
+    // ⌘→ along the tags, with the app filter still on. This is the pair of
+    // filters that used to be reachable only with the mouse: one pair of keys
+    // could not hold two positions, and landing on either cleared the other.
+    model.moveTagFilter(1)
+    #expect(model.selectedTag == tagId)
+    #expect(model.selectedSource == warp.bundleId)
+    model.moveTagFilter(1)
+    #expect(model.selectedTag == tagId)
+
+    // And back off each axis independently.
+    model.moveTagFilter(-1)
+    #expect(model.selectedTag == nil)
+    #expect(model.selectedSource == warp.bundleId)
+    model.moveFilter(-1)
     #expect(model.selectedSource == nil)
     model.moveFilter(-1)
+    #expect(model.selectedSource == nil)
     #expect(model.selectedTag == nil)
-    #expect(model.activeFilter == .source(warp.bundleId))
-    model.moveFilter(-1)
-    #expect(model.activeFilter == .everything)
-    model.moveFilter(-1)
-    #expect(model.activeFilter == .everything)
+}
+
+/// One registration per key, the modifiers read at the moment of the press. The
+/// three meanings have to stay apart, and ⌘ has to win over ⇧: extending a run
+/// into the tag strip is not a thing.
+@MainActor @Test func oneArrowKeyCarriesThreeMeanings() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let warp = ItemSource(bundleId: "dev.warp.Warp-Stable", name: "Warp")
+    let tagged = try repo.insert(textItem("a"), source: warp, now: t0)
+    try repo.insert(textItem("b"), source: warp, now: t0.addingTimeInterval(1))
+    try repo.addTag(named: "keep", to: tagged)
+    model.reload()
+    let tagId = try #require(model.tags.first?.id)
+
+    // Bare: the cursor moves and nothing gets marked.
+    model.arrow(1, extending: false, acrossTags: false)
+    #expect(model.selectedIndex == 1)
+    #expect(model.selectedItems.count == 1)
+
+    // ⇧: the run grows, the cursor stays where it landed.
+    model.arrow(-1, extending: true, acrossTags: false)
+    #expect(model.selectedItems.count == 2)
+
+    // ⌘: the tag filter moves, and it is not an extension of the run.
+    model.arrow(1, extending: false, acrossTags: true)
+    #expect(model.selectedTag == tagId)
+
+    // ⌘⇧: still the filter, never the run.
+    model.selectedTag = nil
+    model.arrow(1, extending: true, acrossTags: true)
+    #expect(model.selectedTag == tagId)
 }
 
 /// The sheet acts on the selection, so both of its halves have to. A row that
@@ -292,7 +334,8 @@ private func textItem(_ s: String) -> CapturedItem {
     #expect(model.query.isEmpty)
     #expect(model.selectedSource == nil)
     #expect(model.selectedTag == nil)
-    #expect(model.activeFilter == .everything)
+    #expect(model.selectedSource == nil)
+    #expect(model.selectedTag == nil)
     #expect(model.items.map(\.text) == ["gamma", "beta", "alpha"])
     // The newest clipping, not wherever the cursor was left: it is the one the
     // panel is most often opened to reach.

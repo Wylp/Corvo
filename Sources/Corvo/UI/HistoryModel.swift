@@ -173,12 +173,20 @@ final class HistoryModel {
         extendSelection(to: min(max(selectedIndex + step, 0), items.count - 1))
     }
 
-    /// One arrow press. The view reads whether ⇧ was down, the model owns what
-    /// each of the two means — rather than two keyboard shortcuts on the same
-    /// key, which is what this used to be. SwiftUI does not tell a bare arrow
-    /// apart from ⇧+arrow when both are registered: the ⇧ one takes both, and
-    /// every plain arrow press started extending a run.
-    func arrow(_ step: Int, extending: Bool) {
+    /// One arrow press. The view reads which modifiers were down, the model owns
+    /// what each combination means — rather than one keyboard shortcut per
+    /// combination, which is what this used to be. SwiftUI does not tell a bare
+    /// arrow apart from ⇧+arrow when both are registered: the ⇧ one takes both,
+    /// and every plain arrow press started extending a run. Registering ⌘+arrow
+    /// separately would have walked into the same trap on the other side.
+    ///
+    /// ⌘ wins over ⇧, so ⌘⇧← is a filter step and not an extension. The
+    /// combination has to mean one thing, and "extend the run into the tags" is
+    /// not a thing.
+    /// `acrossTags` defaults to false so that every caller written before the
+    /// tag strip existed still says what it meant.
+    func arrow(_ step: Int, extending: Bool, acrossTags: Bool = false) {
+        if acrossTags { return moveTagFilter(step) }
         extending ? extendSelection(step) : move(step)
     }
 
@@ -258,65 +266,44 @@ final class HistoryModel {
         return (try? repo.tags(forItem: id)) ?? []
     }
 
-    // MARK: - Walking the sidebar
+    // MARK: - Walking the filters
 
-    /// One position in the filters. They are drawn in two places — the apps down
-    /// the sidebar, the tags across the top — and the two they set can both be on
-    /// at once, but a cursor is one place, so the keyboard sees all of them as a
-    /// single sequence with "everything" at the head of it.
-    enum Filter: Equatable {
-        case everything
-        case source(String)
-        case tag(Int64)
-    }
-
-    /// The sequence ⌘↑/⌘↓ walks: everything, then the apps, then the tags.
-    private var filters: [Filter] {
-        [.everything]
-            + sources.map { Filter.source($0.bundleId) }
-            + tags.compactMap { $0.id.map(Filter.tag) }
-    }
-
-    /// Where the cursor is now.
-    ///
-    /// Tag before source when the mouse has set both, because there is no third
-    /// answer and one had to be chosen: the tag is the filter a person put there
-    /// on purpose, the source is often just where the clipping happened to come
-    /// from.
-    var activeFilter: Filter {
-        if let selectedTag { return .tag(selectedTag) }
-        if let selectedSource { return .source(selectedSource) }
-        return .everything
-    }
-
-    /// ⌘↑ / ⌘↓ through the sidebar.
+    /// The step both pairs take, over the values themselves rather than over
+    /// `Filter`: the head of each list is `nil`, which is that axis switched
+    /// off, so walking back to it clears the filter instead of landing on a
+    /// case that has to guess which axis it belongs to.
     ///
     /// It clamps rather than wrapping, for the reason the tag sheet's highlight
-    /// does: an arrow held down should come to rest at the end of the column,
-    /// not reappear at the other end of it.
-    func moveFilter(_ step: Int) {
-        let column = filters
-        let here = column.firstIndex(of: activeFilter) ?? 0
-        apply(column[min(max(here + step, 0), column.count - 1)])
+    /// does: an arrow held down should come to rest at the end of a list, not
+    /// reappear at the other end of it.
+    private static func stepping<T: Equatable>(_ list: [T?], by step: Int, from here: T?) -> T? {
+        let index = list.firstIndex(of: here) ?? 0
+        return list[min(max(index + step, 0), list.count - 1)]
     }
 
-    /// Landing on a row sets that filter and clears the other, because the
-    /// cursor is in one place and the sidebar should show what the cursor says.
-    /// Combining a source *and* a tag stays possible — it is just something only
-    /// the mouse can ask for, since two positions cannot be walked with one
-    /// pair of keys.
-    private func apply(_ filter: Filter) {
-        switch filter {
-        case .everything:
-            selectedSource = nil
-            selectedTag = nil
-        case .source(let bundleId):
-            selectedTag = nil
-            selectedSource = bundleId
-        case .tag(let id):
-            selectedSource = nil
-            selectedTag = id
-        }
+    /// ⌘↑ / ⌘↓ down the sidebar, ⌘← / ⌘→ along the tag strip. One pair per
+    /// direction, each pointing the way its own list is drawn — which is the
+    /// only mapping a person does not have to be told.
+    ///
+    /// ⌘ and not ⌥⌘: the bare arrows already walk the carousel, so ⌘ is the one
+    /// modifier this panel spends on "the list behind the cards", and it now
+    /// spends it in both directions. The cost is that ⌘← stops meaning "start
+    /// of the line" to the search field, which is a thing nobody does to a
+    /// one-line search box.
+    ///
+    /// Two walkers and not one, so each touches only its own axis: ⌘↓ onto an
+    /// app leaves the tag alone and vice versa. Combining an app and a tag used
+    /// to be something only the mouse could ask for, because two positions
+    /// cannot be walked with one pair of keys. With two pairs they can, and the
+    /// panel stops having a filter the keyboard cannot reach.
+    func moveFilter(_ step: Int) {
+        selectedSource = Self.stepping([nil] + sources.map { $0.bundleId },
+                                       by: step, from: selectedSource)
+    }
+
+    func moveTagFilter(_ step: Int) {
+        selectedTag = Self.stepping([nil] + tags.compactMap(\.id),
+                                    by: step, from: selectedTag)
     }
 
     /// The tags `item` could still be given, narrowed by what has been typed so
