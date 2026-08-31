@@ -1,0 +1,78 @@
+import AppKit
+import GRDB
+import SwiftUI
+import Testing
+@testable import Corvo
+
+/// What a card costs is per card built, so what matters is how many get built.
+/// The row is lazy for that reason, and this is the measurement that says so —
+/// asserted rather than described, because "it only builds what is visible" is
+/// exactly the kind of claim that stays in a comment long after a refactor has
+/// stopped making it true.
+///
+/// Tag queries are the probe because they are countable from outside: every
+/// built card asks for its own, so counting the queries counts the cards. The
+/// highlighting and the image loading ride along with them.
+@Test @MainActor func theCarouselOnlyAsksAboutTheCardsItIsShowing() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("corvo-carousel-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let blobs = BlobStore(directory: dir)
+    let repo = ItemRepository(dbQueue: try AppDatabase.make(at: nil), blobs: blobs)
+
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+    let safari = ItemSource(bundleId: "com.apple.Safari", name: "Safari")
+    // The limit `reload` fetches, so the list is as long as the panel ever
+    // makes it and the eager and lazy answers are as far apart as they get.
+    let clippings = 200
+    for i in 0..<clippings {
+        _ = try repo.insert(CapturedItem(kind: .text, text: "clipping number \(i)",
+                                         imageData: nil, filePath: nil, url: nil,
+                                         contentHash: "hash-\(i)"),
+                            source: safari, now: start.addingTimeInterval(Double(i)))
+    }
+
+    let model = HistoryModel(repo: repo,
+                             prefs: Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+    model.reload()
+    #expect(model.items.count == clippings)
+
+    let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 900, height: 420),
+                         styleMask: [.nonactivatingPanel], backing: .buffered, defer: false)
+    window.contentView = NSHostingView(rootView: HistoryView(
+        model: model, blobs: blobs, onPaste: { _ in }, onCopy: { _ in }))
+    defer { window.orderOut(nil) }
+    window.makeKeyAndOrderFront(nil)
+    settleCarousel()
+
+    // Traced after the first layout, so what is counted is the cost of moving
+    // the cursor and not the cost of opening the panel.
+    let queries = QueryCounter()
+    try repo.dbQueue.writeWithoutTransaction { db in
+        db.trace(options: .statement) { event in
+            if "\(event)".contains("FROM tag") { queries.count += 1 }
+        }
+    }
+
+    model.arrow(1, extending: false)
+    settleCarousel()
+
+    // Deliberately loose: how many cards fit is a function of the window, and
+    // SwiftUI is free to keep a few more around than it draws. The number this
+    // is guarding against is one per clipping in the history, which is what an
+    // eager row costs and what it costs again on the next key.
+    #expect(queries.count < clippings / 4,
+            "one arrow press asked the database \(queries.count) times over \(clippings) clippings")
+}
+
+/// `db.trace` hands its events to a closure the compiler cannot see the
+/// isolation of, so the count lives behind a reference rather than in a `var`
+/// captured across that boundary.
+private final class QueryCounter: @unchecked Sendable {
+    var count = 0
+}
+
+@MainActor
+private func settleCarousel() {
+    RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+}

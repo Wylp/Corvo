@@ -18,6 +18,9 @@ struct HistoryView: View {
     let onCopy: ([ClipItem]) -> Void
 
     @State private var tagText = ""
+    /// Which row of the tag sheet the keyboard is on, or `nil` for "still in the
+    /// field". See `HistoryModel.highlight`.
+    @State private var highlighted: Int?
     @State private var nameText = ""
     @FocusState private var isSearchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -25,6 +28,8 @@ struct HistoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             searchField
+            Divider()
+            tagStrip
             Divider()
             HStack(spacing: 0) {
                 FilterSidebar(model: model)
@@ -34,7 +39,12 @@ struct HistoryView: View {
             Divider()
             shortcutRail
         }
-        .frame(minWidth: 700, minHeight: 380)
+        // The minimum is what it takes to draw a whole card under the chrome:
+        // 48 of search, 30 of tags, 30 of rail, the rules between them, and the
+        // 250pt card inside its own padding. Below that the panel would clip the
+        // one thing it exists to show, so the number moved when the strip was
+        // added rather than staying at a figure that was true before it.
+        .frame(minWidth: 700, minHeight: 410)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .background(shortcuts)
@@ -66,6 +76,102 @@ struct HistoryView: View {
         .frame(height: 48)
     }
 
+    /// Tags across the top instead of underneath the apps in the sidebar.
+    ///
+    /// The two lists shared one 190pt column and they do not grow alike. Apps
+    /// arrive on their own — one appears for every place anything has ever been
+    /// copied from, and nothing the user does adds or removes them — while tags
+    /// are put there by hand and stay few. So the list that grows is the one
+    /// that pushed the other off the bottom of the panel, and the one pushed off
+    /// is the one somebody built on purpose. Thirteen apps was enough.
+    ///
+    /// Across the top they stop competing for the same space: the column is free
+    /// to be as long as the apps make it, and the tags sit in a row that is read
+    /// in one pass rather than scrolled to.
+    ///
+    /// The row stays even with no tags in it, for the reason the sidebar's tag
+    /// section used to: it carries the only way into the tag manager, and a user
+    /// with no tags yet is exactly the one who needs to find it.
+    private var tagStrip: some View {
+        HStack(spacing: 0) {
+            if model.tags.isEmpty {
+                // Says what the empty row is for, in the place the tags will
+                // appear, rather than leaving a bare band with a lone button at
+                // the end of it — which is what a user with no tags saw, and
+                // reads as something broken rather than something not used yet.
+                //
+                // Quiet on purpose, and it names the key: the same reasoning as
+                // the card's own "Name this (⌘R)". A hint the user has to
+                // already know is not a hint.
+                Text("Tags you add with ⌘T show up here")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 16)
+                Spacer(minLength: 8)
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(model.tags) { tag in tagChip(tag) }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .scrollIndicators(.never)
+            }
+            editTagsButton
+        }
+        .frame(height: 30)
+        .accessibilityLabel("Tags")
+    }
+
+    /// A capsule, matching the tags drawn on the cards: the same thing named the
+    /// same way in both places, so filling one is visibly the same object as the
+    /// one printed on the clipping.
+    ///
+    /// Clicking the active chip clears the filter, which is the behaviour the
+    /// sidebar rows already had — and the fill is what makes clicking it again a
+    /// sensible thing to try.
+    private func tagChip(_ tag: Tag) -> some View {
+        let isOn = model.selectedTag == tag.id
+        return Button {
+            model.selectedTag = isOn ? nil : tag.id
+        } label: {
+            HStack(spacing: 5) {
+                // The glyph carries the rule, the colour carries the tag's own
+                // colour, exactly as in the sidebar this replaces.
+                Image(systemName: tag.rule.isActive ? "bolt.fill" : "tag.fill")
+                    .font(.caption2)
+                    .foregroundStyle(TagColor.named(tag.color)?.color ?? .secondary)
+                Text(tag.name).lineLimit(1)
+            }
+            .font(.callout)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            .background(isOn ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06),
+                        in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    /// Pinned outside the scroll view rather than trailing the chips, so it does
+    /// not walk off the edge once there are more tags than fit: it is the only
+    /// route to the tag manager, and a route that scrolls away is one a user has
+    /// to already know about to reach.
+    private var editTagsButton: some View {
+        Button { model.sheet = .tags } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.caption)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Edit tags and rules (⌘⇧T)")
+        .accessibilityLabel("Edit tags and rules")
+        .padding(.trailing, 12)
+    }
+
     @ViewBuilder
     private var carousel: some View {
         if model.items.isEmpty {
@@ -73,11 +179,24 @@ struct HistoryView: View {
         } else {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
+                    // Lazy, so the row builds the cards it is showing and not
+                    // every clipping the query returned. `HStack` builds all of
+                    // them, and a built card is not free: it asks the database
+                    // for its tags, tokenises up to 1,200 characters, and an
+                    // image card opens its blob off disk with nothing caching
+                    // the result.
+                    //
+                    // The row reads `selectedIndex`, so every arrow key rebuilds
+                    // whatever it builds. `theCarouselOnlyAsksAboutTheCardsItIsShowing`
+                    // measures the difference on a 200-clipping history: two
+                    // hundred tag queries per arrow press eagerly, four lazily.
+                    LazyHStack(spacing: 12) {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                             ItemCard(item: item, tags: model.tags(for: item),
                                      isSelected: index == model.selectedIndex,
-                                     isMarked: model.isMarked(item), blobs: blobs,
+                                     isMarked: model.isMarked(item),
+                                     number: HistoryModel.number(forIndex: index),
+                                     blobs: blobs,
                                      onHover: { midX in
                                          PreviewPanel.shared.hover(item: item, cardMidX: midX,
                                                                    blobs: blobs)
@@ -135,6 +254,13 @@ struct HistoryView: View {
         HStack(spacing: 14) {
             KeycapHint(key: "⏎", label: "Paste")
             KeycapHint(key: "⌘C", label: "Copy")
+            // Third of the three ways out holding a clipping, so it sits with
+            // the other two. The number is written on each card as well, and
+            // that turned out not to be enough on its own: the rail is where a
+            // person looks to find out what the keys do, and a shortcut absent
+            // from it reads as one that does not exist. Being in both places
+            // costs one hint in a row that has the room.
+            KeycapHint(key: "⌘1-9", label: "Paste that card")
             // Third because it changes what the first two act on, so it reads
             // as a qualifier of them rather than another thing to do — and the
             // label has to say so. Every other hint in this rail names a key
@@ -148,6 +274,11 @@ struct HistoryView: View {
             KeycapHint(key: "⌘R", label: "Name")
             KeycapHint(key: "⌘T", label: "Tag")
             KeycapHint(key: "⌘⇧T", label: "Edit tags")
+            // Two axes now, so two hints: the column of apps runs down, the row
+            // of tags runs across, and each pair of keys points the way its own
+            // list is drawn.
+            KeycapHint(key: "⌘↑↓", label: "Apps")
+            KeycapHint(key: "⌘←→", label: "Tags")
             KeycapHint(key: "⌘⌫", label: "Delete")
             Spacer(minLength: 8)
             KeycapHint(key: "esc", label: "Close")
@@ -169,6 +300,22 @@ struct HistoryView: View {
             // the version that holds.
             shortcutButton(.leftArrow) { arrow(-1) }
             shortcutButton(.rightArrow) { arrow(1) }
+            // ⌘ and not a bare ↑/↓: left and right already walk the clippings,
+            // so up and down walk what is being shown. ⌘ is what keeps the pair
+            // from being one more thing the search field eats.
+            shortcutButton(.upArrow, modifiers: .command) { model.moveFilter(-1) }
+            shortcutButton(.downArrow, modifiers: .command) { model.moveFilter(1) }
+            // Registered with the modifier, exactly like the pair above, and not
+            // read off `NSEvent.modifierFlags` inside the bare-arrow handler.
+            // The bare registration is not offered ⌘+arrow at all: measured in
+            // `commandArrowsReachTheFiltersAndLeaveTheBareArrowsAlone`, where a
+            // ⌘→ posted at the window moved neither the cursor nor the filter
+            // until this pair existed. The ⇧ arrows do work that way, which is
+            // what made it look like the rule — it is not: ⇧ is folded into the
+            // key's own characters, ⌘ makes the event a key equivalent, and only
+            // an equivalent registered with ⌘ is ever asked about it.
+            shortcutButton(.leftArrow, modifiers: .command) { model.moveTagFilter(-1) }
+            shortcutButton(.rightArrow, modifiers: .command) { model.moveTagFilter(1) }
             shortcutButton(.return) { pasteSelected() }
             // Wins over the search field's own ⌘C: a shortcut registered on the
             // window's views is consulted before the menu item the field relies
@@ -200,9 +347,38 @@ struct HistoryView: View {
                 nameText = model.selectedItem?.label ?? ""
                 model.sheet = .rename
             }
-            shortcutButton("t", modifiers: .command) { tagText = ""; model.sheet = .naming }
+            shortcutButton("t", modifiers: .command) {
+                tagText = ""
+                highlighted = nil
+                model.sheet = .naming
+            }
             shortcutButton("t", modifiers: [.command, .shift]) { model.sheet = .tags }
+            // ⌘1 through ⌘9 paste the card wearing that number, rather than
+            // moving the cursor onto it. Selecting would save nothing: the
+            // arrows already do that, and what the numbers buy is skipping the
+            // walk entirely — see it, press it, it is pasted.
+            //
+            // One clipping and not the run, for the same reason a double-click
+            // is one clipping: a key that names a specific card is pointing at
+            // that card, whatever else happens to be marked.
+            ForEach(1...HistoryModel.numberedCards, id: \.self) { number in
+                shortcutButton(KeyEquivalent(Character("\(number)")), modifiers: .command) {
+                    guard let item = model.item(atNumber: number) else { return }
+                    onPaste([item])
+                }
+            }
         }
+        // Off while a sheet is up. Every key in this group acts on the list
+        // behind the sheet, and a sheet is a question with the answer still
+        // being typed: ⌘1 pasted a clipping and took the panel off screen from
+        // under an open tag editor, and ⌘→ moved the filter under it. Measured
+        // in `theShortcutsDoNotReachThroughAnOpenSheet` — a presented sheet does
+        // not stop the presenter's shortcuts on its own.
+        //
+        // On the group rather than on the keys this change added, because the
+        // ones already here reach through it in exactly the same way and a guard
+        // per key is a guard somebody forgets on the tenth.
+        .disabled(model.sheet != nil)
         .opacity(0)
         .frame(width: 0, height: 0)
     }
@@ -229,11 +405,32 @@ struct HistoryView: View {
         .keyboardShortcut(key, modifiers: modifiers)
     }
 
+    /// The field makes a tag; the list below it reaches one that already exists.
+    ///
+    /// Both are needed, and the list is the half that was missing. A tag is
+    /// stored under the name it was written with, so typing at a tag one letter
+    /// or one capital off from the one that was meant does not fail — it quietly
+    /// files the clipping under a second tag beside it, and the user finds out
+    /// when the sidebar has "Work" and "work" in it. Reaching an existing tag
+    /// should not require remembering how it was spelled.
     private var tagSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("New tag").font(.headline)
+            Text("Add a tag").font(.headline)
             TextField("Tag name", text: $tagText)
                 .onSubmit { confirmTag() }
+                // On the field, which is what holds focus while this sheet is
+                // up. An arrow key that reaches a single-line text field is
+                // spent moving the caret, so this is also the only place the
+                // list can be reached without the mouse.
+                .onKeyPress(.upArrow) { moveHighlight(-1) }
+                .onKeyPress(.downArrow) { moveHighlight(1) }
+                // Typing changes which tags are on offer, so a row picked
+                // against the old list is no longer the row under the cursor.
+                // Dropping back to the field is the answer that cannot pick the
+                // wrong tag.
+                .onChange(of: tagText) { _, _ in highlighted = nil }
+            tagsAlreadyOn
+            tagChoiceList
             HStack {
                 Spacer()
                 Button("Cancel") { model.sheet = nil }
@@ -242,6 +439,110 @@ struct HistoryView: View {
         }
         .padding(20)
         .frame(width: 300)
+    }
+
+    /// What this clipping already carries, each row a way to take it back off.
+    ///
+    /// It belongs on this sheet and not only in the tag manager, because
+    /// "which tags does this clipping have" is one thought and adding was the
+    /// only half of it that had an answer here. A tag put on by mistake — and
+    /// the whole reason for the list below is that they used to be easy to put
+    /// on by mistake — had to be undone on a different screen, if the user found
+    /// it at all.
+    ///
+    /// Removing takes the tag off *this clipping*. It is not `deleteTag`, which
+    /// destroys the tag everywhere and lives behind a confirmation in the
+    /// manager. Nothing here needs one: what is undone is undone by clicking the
+    /// same name in the list below.
+    @ViewBuilder
+    private var tagsAlreadyOn: some View {
+        let onAll = model.tagsOnAll(model.selectedItems)
+        let carried = model.tags.filter { onAll.contains($0.name) }
+        if !carried.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(carried) { tag in
+                    HStack(spacing: 0) {
+                        tagChoiceRow(tag, isHighlighted: false)
+                        Button { remove(tag) } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 8)
+                        .help("Remove this tag from the clipping")
+                        .accessibilityLabel("Remove \(tag.name)")
+                    }
+                }
+            }
+            .frame(maxHeight: 108)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    /// Absent rather than empty when there is nothing to show, so a first tag is
+    /// made in a sheet the same size as the one that made it.
+    @ViewBuilder
+    private var tagChoiceList: some View {
+        if !tagChoices.isEmpty {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(Array(tagChoices.enumerated()), id: \.element.id) { index, tag in
+                            Button { add(tag) } label: {
+                                tagChoiceRow(tag, isHighlighted: index == highlighted)
+                            }
+                            .buttonStyle(.plain)
+                            .id(tag.id)
+                        }
+                    }
+                }
+                // Keeps the keyboard's row on screen. Without it ↓ walks past
+                // the fourth row into a highlight nobody can see.
+                .onChange(of: highlighted) { _, new in
+                    guard let new, tagChoices.indices.contains(new) else { return }
+                    proxy.scrollTo(tagChoices[new].id)
+                }
+            }
+            // Four rows and the fifth cut in half: enough to scan, and it says
+            // there is more below without a scroller having to appear.
+            .frame(maxHeight: 108)
+            .scrollIndicators(.never)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    private var tagChoices: [Tag] {
+        model.tagChoices(for: model.selectedItems, matching: tagText)
+    }
+
+    /// The dot and the name in the order the sidebar and the tag manager already
+    /// use them.
+    private func tagChoiceRow(_ tag: Tag, isHighlighted: Bool) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(TagColor.named(tag.color)?.color ?? Color.secondary.opacity(0.35))
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text(tag.name).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        // The row is the target, not the words in it.
+        .contentShape(Rectangle())
+        .background(isHighlighted ? Color.accentColor.opacity(0.25) : .clear,
+                    in: RoundedRectangle(cornerRadius: 4))
+        .accessibilityAddTraits(isHighlighted ? .isSelected : [])
+    }
+
+    /// `.ignored` when there is no list to walk, so the arrow goes on to do
+    /// whatever it did before rather than being swallowed by a sheet that had no
+    /// use for it.
+    private func moveHighlight(_ step: Int) -> KeyPress.Result {
+        let moved = HistoryModel.highlight(highlighted, step: step, count: tagChoices.count)
+        guard tagChoices.count > 0 else { return .ignored }
+        highlighted = moved
+        return .handled
     }
 
     /// Built to the same measurements as `tagSheet` on purpose. The two answer
@@ -273,9 +574,35 @@ struct HistoryView: View {
         model.sheet = nil
     }
 
+    /// ⏎ means whichever of the two things the sheet does is currently in hand:
+    /// take the highlighted tag, or make the one that was typed. Nothing is
+    /// highlighted until an arrow says so, so typing a brand new name and
+    /// pressing ⏎ can never be answered with somebody else's tag.
     private func confirmTag() {
+        if let index = highlighted, tagChoices.indices.contains(index) {
+            return add(tagChoices[index])
+        }
         model.addTag(tagText, to: model.selectedItems)
         model.sheet = nil
+    }
+
+    /// Passes the stored name, not what was typed, so the tag the row stands for
+    /// is the tag that gets attached — and to the whole selection, because the
+    /// field beside it already does. A row that reached one clipping while
+    /// typing the same name reached five would be the sheet contradicting
+    /// itself.
+    private func add(_ tag: Tag) {
+        model.addTag(tag.name, to: model.selectedItems)
+        model.sheet = nil
+    }
+
+    /// The sheet stays up, unlike `add`. Taking a tag off is the one thing here
+    /// a user is likely to do twice in a row, and it is also the one worth
+    /// seeing the result of: the row leaves the top list and reappears in the
+    /// one below.
+    private func remove(_ tag: Tag) {
+        model.removeTag(tag, from: model.selectedItems)
+        highlighted = nil
     }
 
     /// `NSEvent.modifierFlags` is the state right now, which during the handler

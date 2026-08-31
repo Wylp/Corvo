@@ -40,6 +40,9 @@ final class HistoryModel {
     private(set) var items: [ClipItem] = []
     private(set) var sources: [SourceSummary] = []
     private(set) var tags: [Tag] = []
+    /// Read only by `tagChoices`, refreshed with everything else so the order
+    /// the sheet offers keeps up with the tagging done through it.
+    private var tagUsage: [Int64: Int] = [:]
     var selectedIndex: Int = 0
 
     var selectedItem: ClipItem? {
@@ -85,6 +88,12 @@ final class HistoryModel {
                                   tagId: selectedTag, limit: 200)) ?? []
         sources = (try? repo.sources()) ?? []
         tags = (try? repo.allTags()) ?? []
+        // Through `attempt` like every other write on this screen, and not a
+        // bare `try?`. The fallback is not a crash, which is exactly what makes
+        // it worth reporting: an empty map silently reorders the list this
+        // change exists to provide, alphabetically instead of by use, with
+        // nothing anywhere saying why.
+        tagUsage = Self.attempt("tagUsage") { try repo.tagUsage() } ?? [:]
         selectedIndex = min(selectedIndex, max(items.count - 1, 0))
         if items.isEmpty { selectedIndex = 0 }
         // A run survives the poller, but only for clippings still in the list: a
@@ -166,16 +175,215 @@ final class HistoryModel {
 
     /// One arrow press. The view reads whether ⇧ was down, the model owns what
     /// each of the two means — rather than two keyboard shortcuts on the same
-    /// key, which is what this used to be. SwiftUI does not tell a bare arrow
-    /// apart from ⇧+arrow when both are registered: the ⇧ one takes both, and
-    /// every plain arrow press started extending a run.
+    /// key. SwiftUI does not tell a bare arrow apart from ⇧+arrow when both are
+    /// registered: the ⇧ one takes both, and every plain arrow press started
+    /// extending a run.
+    ///
+    /// ⌘+arrow is the other way round and does not belong here: it never reaches
+    /// a bare registration at all, so the filters register it themselves. ⇧ is
+    /// folded into the characters of the key, while ⌘ turns the press into a key
+    /// equivalent, and only an equivalent registered with ⌘ is ever offered one.
     func arrow(_ step: Int, extending: Bool) {
         extending ? extendSelection(step) : move(step)
+    }
+
+    /// Puts the panel back on the whole history, which is the view it is worth
+    /// opening on: the next thing to paste is far more often the thing just
+    /// copied than the one behind a filter set for a job already done.
+    ///
+    /// It has to be said out loud because the panel is hidden and not destroyed,
+    /// so a search and a sidebar row outlive the task they were typed for and
+    /// narrow the list the next time ⌘⇧V opens it. Clearing them by hand is
+    /// three separate places — the field, the source row and the tag row, each
+    /// of which only clears itself — and none of them announces that it is what
+    /// is hiding the clipping being looked for.
+    ///
+    /// Assigns only what is actually set: each of the three reloads in `didSet`,
+    /// and writing a value one of them already holds rebuilds the list for an
+    /// answer it just gave.
+    ///
+    /// The cursor goes back to the newest clipping, and a ⇧-extended run does
+    /// not outlive the panel either: a run restored under a cursor the user has
+    /// not put there is a paste of five clippings where one was meant.
+    ///
+    /// Written out rather than delegated to `select`, which is guarded on the
+    /// list having a row to land on and so does nothing at all on an empty
+    /// history — leaving exactly the run this is here to drop. `reload` happens
+    /// to clear it as well, and a reset that is only correct because of what
+    /// another method does on its way past is a reset that breaks the day that
+    /// method stops doing it.
+    func resetView() {
+        if !query.isEmpty { query = "" }
+        if selectedSource != nil { selectedSource = nil }
+        if selectedTag != nil { selectedTag = nil }
+        selectedIndex = 0
+        markedIds.removeAll()
+        anchorId = nil
+    }
+
+    // MARK: - Reaching a card by number
+
+    /// How far the number keys reach. Nine because that is how many digits sit
+    /// under one hand without a modifier of their own, and because ⌘0 is not the
+    /// tenth of anything on this platform — it is "reset" nearly everywhere it
+    /// is bound, which is the wrong promise on a key that pastes.
+    nonisolated static let numberedCards = 9
+
+    /// The clipping ⌘<number> means, or `nil` when the list is shorter than that.
+    ///
+    /// A position and not an identity: the number on a card says where it is
+    /// sitting right now, so it follows the search and the filter rather than
+    /// naming one clipping forever. That is the version that can be read off the
+    /// screen — the alternative is a number that is correct only for a list the
+    /// user is no longer looking at.
+    ///
+    /// Lives here rather than in the view because "which clipping is the third
+    /// one" is a question with a wrong answer, and an off-by-one that pastes the
+    /// neighbour is the kind that gets noticed after it has been pasted.
+    func item(atNumber number: Int) -> ClipItem? {
+        // Bounded by the reach and not only by the list. Checking the list alone
+        // answers for a number no card is wearing and no key can send — which is
+        // fine right up until something else learns to ask, and then it is a
+        // paste of a clipping the user was never shown.
+        guard (1...Self.numberedCards).contains(number),
+              items.indices.contains(number - 1) else { return nil }
+        return items[number - 1]
+    }
+
+    /// The number to print on the card at `index`, or `nil` past the reach. The
+    /// inverse of `item(atNumber:)`, and it is spelled out rather than left to
+    /// each caller so the badge on the card and the key that fires can never
+    /// disagree about which is which.
+    nonisolated static func number(forIndex index: Int) -> Int? {
+        // Bounded at both ends. Checking only the ceiling answered `0` for index
+        // -1 and `-1` for index -2, which is not a key anybody can press and not
+        // a number any card wears — the inverse silently stopped being an
+        // inverse below zero. Nothing passes a negative index today; the pair
+        // has to hold for the one that eventually does.
+        (0..<numberedCards).contains(index) ? index + 1 : nil
     }
 
     func tags(for item: ClipItem) -> [Tag] {
         guard let id = item.id else { return [] }
         return (try? repo.tags(forItem: id)) ?? []
+    }
+
+    // MARK: - Walking the filters
+
+    /// The step both pairs take, over the values themselves rather than over
+    /// `Filter`: the head of each list is `nil`, which is that axis switched
+    /// off, so walking back to it clears the filter instead of landing on a
+    /// case that has to guess which axis it belongs to.
+    ///
+    /// It clamps rather than wrapping, for the reason the tag sheet's highlight
+    /// does: an arrow held down should come to rest at the end of a list, not
+    /// reappear at the other end of it.
+    private static func stepping<T: Equatable>(_ list: [T?], by step: Int, from here: T?) -> T? {
+        // A filter set to something no longer in the list — an app whose last
+        // clipping was just pruned — is treated as the head, which is that axis
+        // switched off. It is where the filter effectively already is: it is
+        // matching nothing and showing nothing. So stepping back from it turns
+        // it off for real and stepping forward enters the list at the top,
+        // rather than resuming from a position that no longer exists.
+        let index = list.firstIndex(of: here) ?? 0
+        return list[min(max(index + step, 0), list.count - 1)]
+    }
+
+    /// ⌘↑ / ⌘↓ down the sidebar, ⌘← / ⌘→ along the tag strip. One pair per
+    /// direction, each pointing the way its own list is drawn — which is the
+    /// only mapping a person does not have to be told.
+    ///
+    /// ⌘ and not ⌥⌘: the bare arrows already walk the carousel, so ⌘ is the one
+    /// modifier this panel spends on "the list behind the cards", and it now
+    /// spends it in both directions. The cost is that ⌘← stops meaning "start
+    /// of the line" to the search field, which is a thing nobody does to a
+    /// one-line search box.
+    ///
+    /// Two walkers and not one, so each touches only its own axis: ⌘↓ onto an
+    /// app leaves the tag alone and vice versa. Combining an app and a tag used
+    /// to be something only the mouse could ask for, because two positions
+    /// cannot be walked with one pair of keys. With two pairs they can, and the
+    /// panel stops having a filter the keyboard cannot reach.
+    func moveFilter(_ step: Int) {
+        selectedSource = Self.stepping([nil] + sources.map { $0.bundleId },
+                                       by: step, from: selectedSource)
+    }
+
+    func moveTagFilter(_ step: Int) {
+        selectedTag = Self.stepping([nil] + tags.compactMap(\.id),
+                                    by: step, from: selectedTag)
+    }
+
+    /// The tags `item` could still be given, narrowed by what has been typed so
+    /// far.
+    ///
+    /// Lives here rather than in the sheet because it is the decision the sheet
+    /// exists to make, and a `View` is the one place it could not be tested.
+    /// Matching is case-insensitive and anywhere in the name: the field is being
+    /// used to *find* a tag, and the person typing it does not know how the tag
+    /// was capitalised when it was made.
+    ///
+    /// Ordered by how many clippings already carry the tag, because the tag
+    /// filed under most is the one most likely to be wanted again, and a list
+    /// sorted by name puts that answer wherever the alphabet happens to leave
+    /// it. Name breaks the tie, so equally used tags do not swap places between
+    /// two openings of the same sheet.
+    func tagChoices(for item: ClipItem?, matching query: String) -> [Tag] {
+        tagChoices(for: [item].compactMap { $0 }, matching: query)
+    }
+
+    /// The same question for a ⇧-extended run.
+    ///
+    /// A tag is dropped from the list only when *every* clipping in the run
+    /// already carries it. Hiding one that some of them carry would be hiding
+    /// the very row that finishes the job: the reason to tag a run at once is to
+    /// make it uniform, and a tag on four of five is exactly the case that needs
+    /// the fifth.
+    func tagChoices(for items: [ClipItem], matching query: String) -> [Tag] {
+        let taken = tagsOnAll(items)
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return tags.filter { tag in
+            !taken.contains(tag.name)
+                && (typed.isEmpty || tag.name.localizedCaseInsensitiveContains(typed))
+        }
+        .sorted { a, b in
+            let (ua, ub) = (usage(a), usage(b))
+            return ua == ub ? a.name.localizedStandardCompare(b.name) == .orderedAscending : ua > ub
+        }
+    }
+
+    private func usage(_ tag: Tag) -> Int { tag.id.flatMap { tagUsage[$0] } ?? 0 }
+
+    /// The tag names every one of `items` carries. Empty for an empty selection.
+    ///
+    /// The intersection and not the union, so the sheet's two lists are exact
+    /// complements: a tag is either on the whole selection, and therefore
+    /// removable from it, or it is still offerable to it. A tag on some of the
+    /// run would otherwise have to appear in both at once.
+    func tagsOnAll(_ items: [ClipItem]) -> Set<String> {
+        let carried = items.map { Set(tags(for: $0).map(\.name)) }
+        return carried.dropFirst().reduce(carried.first ?? []) { $0.intersection($1) }
+    }
+
+    /// Where ↑/↓ lands in the sheet's list of tags, or `nil` for "in the field,
+    /// not in the list".
+    ///
+    /// `nil` is a real position and not an absence: it is what makes ⏎ mean
+    /// *make the tag I typed* rather than *take the one that happens to be
+    /// first*. So ↑ off the top goes back to it, which is the way back to typing
+    /// — and ↓ from it enters the list at the top, ↑ from it at the bottom,
+    /// the way a menu opens either way in this platform.
+    ///
+    /// It clamps and never wraps: an arrow held down should stop at the end of a
+    /// list, not reappear at the other end of one the user cannot see all of.
+    /// `nonisolated` because it reads nothing: it is arithmetic on the three
+    /// numbers it is handed, which is also what lets it be tested without a
+    /// model.
+    nonisolated static func highlight(_ current: Int?, step: Int, count: Int) -> Int? {
+        guard count > 0 else { return nil }
+        guard let current else { return step > 0 ? 0 : count - 1 }
+        if current == 0 && step < 0 { return nil }
+        return min(max(current + step, 0), count - 1)
     }
 
     func addTag(_ name: String, to item: ClipItem) {
@@ -198,6 +406,24 @@ final class HistoryModel {
     func addTag(_ name: String, to items: [ClipItem]) {
         for id in items.compactMap(\.id) {
             Self.attempt("addTag") { try repo.addTag(named: name, to: id) }
+        }
+        reload()
+    }
+
+    /// Takes the tag off this one clipping. The tag itself, its colour and its
+    /// rule stay — that is `deleteTag`, on the other screen, and the two are
+    /// worth keeping far apart: one undoes a filing mistake, the other throws
+    /// away a tag and every clipping's link to it at once.
+    func removeTag(_ tag: Tag, from item: ClipItem) {
+        removeTag(tag, from: [item])
+    }
+
+    /// Off a whole run, the mirror of `addTag(_:to:)` and for the same reason:
+    /// the sheet acts on the selection, so both of its halves have to.
+    func removeTag(_ tag: Tag, from items: [ClipItem]) {
+        guard let tagId = tag.id else { return }
+        for id in items.compactMap(\.id) {
+            Self.attempt("removeTag") { try repo.removeTag(tagId, from: id) }
         }
         reload()
     }

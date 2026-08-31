@@ -25,6 +25,25 @@ final class Preferences {
         self.defaults = defaults
     }
 
+    /// Whether the status item is in the menu bar at all. Absent means **true**.
+    ///
+    /// `object(forKey:)` and not `bool(forKey:)`: a key nobody ever wrote has to
+    /// mean the behaviour the user already had, and `bool(forKey:)` answers
+    /// `false` for an absent key — every existing install would launch with no
+    /// icon and no visible sign the app is running at all.
+    ///
+    /// The key is shared, not private: `CorvoApp` binds `MenuBarExtra`'s
+    /// `isInserted` to `@AppStorage("showsMenuBarIcon")`, which is what makes the
+    /// icon appear and disappear without relaunching — and what records it when
+    /// the icon is ⌘-dragged out of the menu bar instead of switched off here.
+    /// `showsMenuBarIconKey` exists so the two sides cannot drift apart silently.
+    static let showsMenuBarIconKey = "showsMenuBarIcon"
+
+    var showsMenuBarIcon: Bool {
+        get { defaults.object(forKey: Self.showsMenuBarIconKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.showsMenuBarIconKey) }
+    }
+
     /// Bundle ids whose clippings are never recorded — every line the Settings
     /// window's list holds, including any the user got wrong. `PasteboardMonitor`
     /// compares exact strings, so a line that is not a bundle id matches no app;

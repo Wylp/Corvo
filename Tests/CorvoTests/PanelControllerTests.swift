@@ -101,3 +101,30 @@ private func settle() {
 
     #expect(cleared == afterRelease)
 }
+
+/// The two closures answer to different moments, and the difference is the
+/// whole reason there are two of them. A sheet must not survive a round trip at
+/// all, so it goes on both. What the user is looking at is not transient in that
+/// sense: clicking into another app for a moment is not asking for the search
+/// and the filter to be thrown away, and `hidesOnDeactivate` means that click
+/// arrives here as the same notification a real close would.
+@Test @MainActor func onlyADeliberateOpeningPutsTheViewBackToItsDefault() {
+    var cleared = 0
+    var reset = 0
+    let panel = PanelController(content: Text(verbatim: "x"),
+                                clearTransientState: { cleared += 1 },
+                                resetToDefaultView: { reset += 1 })
+
+    panel.show()
+    #expect(cleared == 1)
+    #expect(reset == 1)
+
+    NotificationCenter.default.post(name: NSApplication.didResignActiveNotification,
+                                    object: NSApp)
+
+    // The sheet is cleared again, because AppKit can put the panel back with no
+    // call of ours in it. The filter is not.
+    #expect(cleared == 2)
+    #expect(reset == 1)
+    panel.hide()
+}

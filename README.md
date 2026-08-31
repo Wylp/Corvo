@@ -66,6 +66,19 @@ just stops one step short: the clipping goes onto your clipboard and Corvo tells
 you so, and you paste it yourself. Capture, search, tags and pinning need no
 permission at all.
 
+### Hiding the menu bar icon
+
+**Settings → Show icon in menu bar** takes Corvo's icon out of the menu bar.
+⌘-dragging the icon out of the menu bar does the same thing, and is remembered
+the same way.
+
+Corvo keeps running with the icon gone, and `⌘⇧V` still opens the panel — but
+the menu is where Settings and Quit live, so with no icon there is one way back:
+
+**Open Corvo again** — from the Applications folder, Spotlight, anywhere. The
+copy already running answers by opening Settings, where the switch is. Launching
+it twice never gives you two Corvos.
+
 ## Keyboard
 
 The panel is a keyboard tool. Every shortcut is printed along its bottom edge,
@@ -118,7 +131,8 @@ A rule is a regular expression, a source app, or both together. With both, they
 must both match.
 
 Tagged clippings are also **exempt from retention**: they never expire and do
-not count towards the history limit. Tagging is how you say "keep this".
+not count towards the history limit. So are clippings you have named with `⌘R`.
+Tagging or naming is how you say "keep this".
 
 ### Worked example: naming your Claude Code sessions
 
@@ -227,7 +241,7 @@ switching it back on restores what you chose — and because turning a rule on c
 delete a lot at once, Corvo asks first. With both off nothing is ever deleted and
 the history grows until you delete clippings yourself.
 
-Pinned and tagged clippings are exempt from all of it.
+Pinned, tagged and named clippings are exempt from all of it.
 
 ## Not yet
 

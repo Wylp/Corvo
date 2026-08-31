@@ -16,6 +16,7 @@ final class FloatingPanel: NSPanel {
 final class PanelController {
     private let panel: FloatingPanel
     private let clearTransientState: @MainActor () -> Void
+    private let resetToDefaultView: @MainActor () -> Void
     /// `nonisolated(unsafe)` only so that `deinit` may read it: it is written
     /// once, on the main actor, and read after the last reference is gone.
     private nonisolated(unsafe) var deactivation: (any NSObjectProtocol)?
@@ -25,8 +26,18 @@ final class PanelController {
     ///   leaves the screen without a call of ours in it. Between the two, no
     ///   sheet can survive a round trip: the panel is only ever on screen after
     ///   `show()`, or after an activation that a deactivation came before.
-    init(content: some View, clearTransientState: @escaping @MainActor () -> Void = {}) {
+    /// - Parameter resetToDefaultView: run only on a deliberate opening. The two
+    ///   are separate because they answer to different moments, and giving them
+    ///   one closure quietly gives the wider one the narrower one's timing. A
+    ///   sheet must not survive a round trip at all, so it is cleared on both.
+    ///   What the user is looking *at* is not transient in that sense: losing a
+    ///   search and a filter because another app took focus for a moment is the
+    ///   same interruption this reset exists to prevent, pointed the other way.
+    init(content: some View,
+         clearTransientState: @escaping @MainActor () -> Void = {},
+         resetToDefaultView: @escaping @MainActor () -> Void = {}) {
         self.clearTransientState = clearTransientState
+        self.resetToDefaultView = resetToDefaultView
         // Borderless: a quick-paste panel that hides on deactivate has no use for
         // close/minimise/zoom — Esc is the way out, and the key rail says so. The
         // window itself is transparent so the content's rounded corners show.
@@ -81,6 +92,7 @@ final class PanelController {
         // Before the window is on screen, not after: the panel opens on the
         // history, never on whatever sheet was up when it was last put away.
         clearTransientState()
+        resetToDefaultView()
         anchorToBottom()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)

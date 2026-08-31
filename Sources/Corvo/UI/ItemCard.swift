@@ -16,6 +16,9 @@ struct ItemCard: View {
     /// so the run reads as one block, and none of the lift: exactly one card is
     /// the cursor, and raising the whole run would lose which one.
     var isMarked: Bool = false
+    /// The key that pastes this card, or `nil` for the ones past the ninth. See
+    /// `HistoryModel.number(forIndex:)`.
+    var number: Int? = nil
     let blobs: BlobStore
     /// The pointer is on this card, with the card's horizontal centre in screen
     /// coordinates. Fires on every movement across the card, not only on entry,
@@ -115,6 +118,25 @@ struct ItemCard: View {
     /// carries no text and therefore no contrast requirement.
     private var header: some View {
         HStack(spacing: 6) {
+            // First, and carrying the ⌘ rather than the bare digit: a lone "3"
+            // in the corner of a card is a number, not an instruction, and the
+            // rail at the foot of the panel is already ten hints long without
+            // an eleventh explaining what the numbers are. Written on the card,
+            // the hint is where the thing it applies to is.
+            if let number {
+                Text(verbatim: "⌘\(number)")
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .padding(.horizontal, 3)
+                    .frame(minHeight: 15)
+                    .background(Color.primary.opacity(0.07),
+                                in: RoundedRectangle(cornerRadius: 4))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Color.primary.opacity(0.12))
+                    }
+                    .accessibilityLabel("Paste with command \(number)")
+            }
             if let icon = AppIcon.image(forBundleId: item.sourceBundleId) {
                 Image(nsImage: icon)
                     .resizable()

@@ -30,7 +30,7 @@ struct RetentionPolicy: Equatable {
                                          maxAge: Double(defaultMaxAgeDays) * 86400)
 }
 
-/// Prunes the history. An item that is pinned or has at least one tag is
+/// Prunes the history. An item that is pinned, named, or has at least one tag is
 /// protected: it never expires and does not count towards the item ceiling.
 struct Retention {
     private let repo: ItemRepository
@@ -83,8 +83,19 @@ struct Retention {
     /// Pinned, or tagged. Written once because it appears in both deletes, and a
     /// copy that lost the `EXISTS` would silently delete what the user marked to
     /// keep.
+    /// Three ways of saying "I meant to keep this", and they are the same
+    /// statement: somebody stopped and did something to this clipping on
+    /// purpose. A name took a keystroke and a sentence to write, exactly like a
+    /// tag did, and expiring it thirty days later throws away the work rather
+    /// than the clipping. ⌘R was the one of the three that did not count.
+    ///
+    /// `IFNULL(...) <> ''` and not `IS NOT NULL`: `setLabel` stores blank as
+    /// NULL, so the two agree today. They stop agreeing the moment anything
+    /// writes `''`, and on a DELETE the cost of being wrong is a clipping the
+    /// user cannot get back.
     private static let protected = """
         item.pinned = 1
+        OR IFNULL(item.label, '') <> ''
         OR EXISTS (SELECT 1 FROM itemTag WHERE itemTag.itemId = item.id)
         """
 

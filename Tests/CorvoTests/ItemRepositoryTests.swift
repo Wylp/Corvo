@@ -185,3 +185,51 @@ private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
     #expect(try repo.search(text: "alpha", sourceBundleId: term.bundleId,
                             tagId: personal, limit: 50).isEmpty)
 }
+
+/// The bug this fixes, in the shape it was reported: searching "g cloud" over a
+/// history holding `gcloud auth login` found nothing, because the space between
+/// the words was being demanded of the stored text too.
+///
+/// The words also have to work in either order and across the three columns the
+/// search spans, since none of that is what the person typing them is thinking
+/// about.
+@Test func searchingSeveralWordsFindsThemAnywhereAndInAnyOrder() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("corvo-search-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let repo = ItemRepository(dbQueue: try AppDatabase.make(at: nil),
+                              blobs: BlobStore(directory: dir))
+    let t = Date(timeIntervalSince1970: 1_700_000_000)
+    let warp = ItemSource(bundleId: "dev.warp.Warp-Stable", name: "Warp")
+
+    func text(_ s: String) -> CapturedItem {
+        CapturedItem(kind: .text, text: s, imageData: nil,
+                     filePath: nil, url: nil, contentHash: s)
+    }
+    _ = try repo.insert(text("gcloud auth login"), source: warp, now: t)
+    _ = try repo.insert(text("cloud storage bucket"), source: warp,
+                        now: t.addingTimeInterval(1))
+    _ = try repo.insert(text("nothing to do with either"), source: warp,
+                        now: t.addingTimeInterval(2))
+
+    func hits(_ q: String) throws -> Set<String> {
+        Set(try repo.search(text: q, sourceBundleId: nil, tagId: nil, limit: 200)
+            .compactMap(\.text))
+    }
+
+    // The reported case. A single letter is a weak word and "storage" carries a
+    // "g" of its own, so this is asserted as reaching the clipping rather than
+    // as reaching only it — what was broken is that it reached nothing at all.
+    #expect(try hits("g cloud").contains("gcloud auth login"))
+    #expect(try !hits("g cloud").contains("nothing to do with either"))
+    // Order is not part of what was asked for.
+    #expect(try hits("login gcloud") == ["gcloud auth login"])
+    // Every word has to be there, so a second one narrows instead of widening.
+    #expect(try hits("cloud") == ["gcloud auth login", "cloud storage bucket"])
+    #expect(try hits("cloud bucket") == ["cloud storage bucket"])
+    // One word in the content, the other in the app that produced it.
+    #expect(try hits("warp bucket") == ["cloud storage bucket"])
+    #expect(try hits("cloud nonsense").isEmpty)
+    // Whitespace alone is not a filter.
+    #expect(try hits("   ").count == 3)
+}
