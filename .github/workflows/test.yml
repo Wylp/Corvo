@@ -36,23 +36,45 @@ jobs:
       - name: Check the String Catalog covers every extracted string
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, plistlib, sys
+          import json, os, pathlib, sys
 
-          keys = set()
+          # .stringsdata is JSON, and each table is a *list* of entries. This
+          # read it as a plist and called .keys() on the list: every file threw,
+          # the except swallowed it, and an empty result used to exit 0 as
+          # "nothing to compare". The check sat green while four strings from
+          # the multi-select PR went missing.
+          keys, scanned, unreadable = set(), 0, []
           for root, _, files in os.walk("."):
               for f in files:
                   if not f.endswith(".stringsdata"):
                       continue
+                  path = os.path.join(root, f)
                   try:
-                      data = plistlib.load(open(os.path.join(root, f), "rb"))
-                  except Exception:
+                      data = json.loads(pathlib.Path(path).read_text())
+                  except Exception as error:
+                      unreadable.append(f"{path}: {error}")
                       continue
+                  # Corvo's own sources only. A dependency that ships localized
+                  # strings has its own catalog and is not this one's business.
+                  if "/Sources/Corvo/" not in data.get("source", ""):
+                      continue
+                  scanned += 1
                   for table in data.get("tables", {}).values():
-                      keys.update(table.keys())
+                      keys.update(e["key"] for e in table if "key" in e)
 
+          if unreadable:
+              print("Unreadable .stringsdata — the format moved again, fix this script:")
+              for u in unreadable[:5]:
+                  print("  -", u)
+              sys.exit(1)
+
+          # Not a skip. The app has user-visible strings, so extracting none means
+          # the build did not run or the format changed — the two ways this check
+          # can stop working. Passing quietly on that is the bug it just had.
           if not keys:
-              print("no .stringsdata found — nothing to compare, skipping")
-              sys.exit(0)
+              print(f"No strings extracted from {scanned} Corvo .stringsdata files.")
+              print("The check cannot do its job — failing instead of passing quietly.")
+              sys.exit(1)
 
           catalog = json.loads(
               pathlib.Path("Sources/Corvo/Resources/Localizable.xcstrings").read_text()

@@ -222,6 +222,53 @@ private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
     #expect(try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50).isEmpty)
 }
 
+// MARK: - Telling retention that something was captured
+
+@MainActor @Test func aStoredClippingReportsItself() throws {
+    let (pb, _, monitor, dir, _, _) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    var captures = 0
+    monitor.onDidCapture = { captures += 1 }
+
+    pb.copyText("hello")
+    try monitor.poll(now: t0)
+    #expect(captures == 1)
+
+    // A poll with nothing new is not a capture.
+    try monitor.poll(now: t0.addingTimeInterval(0.3))
+    #expect(captures == 1)
+}
+
+/// Everything that was discarded before the insert. Firing here would run a
+/// retention sweep for a clipping that was never stored — harmless today, and a
+/// lie about what the callback means.
+@MainActor @Test func contentThatWasNeverStoredDoesNotReportACapture() throws {
+    let (pb, _, monitor, dir, _, prefs) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    var captures = 0
+    monitor.onDidCapture = { captures += 1 }
+
+    pb.copyText("secret-password")
+    pb.availableTypes.append(.init(rawValue: "org.nspasteboard.ConcealedType"))
+    try monitor.poll(now: t0)
+    #expect(captures == 0)
+
+    prefs.blocklist = ["com.apple.Terminal"]
+    pb.copyText("from a blocked app")
+    pb.stringsByType[.init(rawValue: "org.nspasteboard.source")] = "com.apple.Terminal"
+    try monitor.poll(now: t0.addingTimeInterval(1))
+    #expect(captures == 0)
+
+    // Nothing capturable at all: a change count that moved with no usable type.
+    pb.changeCount += 1
+    pb.availableTypes = []
+    pb.stringsByType = [:]
+    try monitor.poll(now: t0.addingTimeInterval(2))
+    #expect(captures == 0)
+}
+
 // MARK: - Image decompression bombs
 
 /// A bilevel TIFF: one bit per pixel, so a payload declaring tens of millions of

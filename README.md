@@ -86,8 +86,10 @@ so you never have to remember this table.
 
 | Key | Does |
 | --- | --- |
-| `⌘⇧V` | Open the panel, from anywhere |
+| `⌘⇧V` | Open the panel, from anywhere — the default, changeable in Settings |
 | `←` `→` | Move through the carousel |
+| `⇧`-click | Select every clipping between this one and the last |
+| `⇧←` `⇧→` | The same, one clipping at a time |
 | `⏎` | Paste into the app you came from |
 | `⌘C` | Copy to the clipboard and stop there |
 | `⌘R` | Name the selected clipping (empty the field to remove the name) |
@@ -97,9 +99,28 @@ so you never have to remember this table.
 | `⌘⌫` | Delete the clipping |
 | `Esc` | Close the panel |
 
+Hold `⇧` and click to take several clippings at once, from the last one you
+touched to the one you click. `⏎` or `⌘C` then act on all of them: text arrives
+joined by newlines in list order, and a run of files arrives as several files.
+`⇧←` and `⇧→` do the same from the keyboard, and any plain click or bare arrow
+drops the run again.
+
 Typing goes straight to the search box, which matches the clipping's content
 **and** the name of the app it came from — so `slack` finds everything you
 copied out of Slack without touching the sidebar.
+
+### Changing the shortcut
+
+`⌘⇧V` is the default and the one thing another clipboard manager is likely to
+already hold. **Settings → Shortcut** rebinds it: click the shortcut, type the
+one you want, and it takes effect immediately. `⌫` clears it, which leaves the
+menu bar item as the only way to open the panel.
+
+It needs `⌘`, `⌥` or `⌃` — `⇧` alone is how you type a capital letter, and a
+global shortcut on `⇧V` would swallow the key in every app you use.
+
+If another app already holds the combination you typed, macOS refuses it. Corvo
+keeps the shortcut you had, and says so under the row.
 
 ## Tags that apply themselves
 
@@ -202,8 +223,24 @@ encrypted.
 
 Nothing leaves your machine. Corvo has no network code, no account and no sync.
 
-By default the history keeps **1000 clippings for 30 days**, both adjustable in
-Settings. Pinned and tagged clippings are exempt.
+By default the history keeps **1000 clippings for 30 days**. Both numbers are
+adjustable in Settings, and each rule has its own switch, so you can keep a count
+ceiling with no expiry, an expiry with no ceiling, both, or neither:
+
+| Keep at most | Delete after | What you get |
+| --- | --- | --- |
+| on | on | whichever rule bites first — the default |
+| on | off | a fixed-size history, at any age |
+| off | on | clippings expire, however many there are |
+| off | off | nothing is ever deleted |
+
+The count ceiling is enforced as you copy, not on a timer: hit the limit and the
+oldest clipping goes immediately. Switching a rule off keeps its number, so
+switching it back on restores what you chose — and because turning a rule on can
+delete a lot at once, Corvo asks first. With both off nothing is ever deleted and
+the history grows until you delete clippings yourself.
+
+Pinned and tagged clippings are exempt from all of it.
 
 ## Not yet
 
@@ -222,9 +259,13 @@ XcodeGen to build:
 brew install xcodegen
 make build     # Debug build
 make test      # the test suite
-make run       # build and launch
+make run       # build and launch, replacing any running copy
 make release   # build/Corvo.zip, the release artifact
 ```
+
+Everything lands under `build/`, including the Debug build. Xcode would
+otherwise derive that location from the project's path, which gives every git
+worktree its own — and `make run` would launch every copy it could find.
 
 The only runtime dependency is [GRDB.swift](https://github.com/groue/GRDB.swift),
 resolved by Swift Package Manager.

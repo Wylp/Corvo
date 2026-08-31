@@ -78,7 +78,7 @@ struct TagRule: Equatable {
         // Without this the editor's preview and the retroactive apply would pay
         // the budget per item — a thousand rows is a thousand timeouts — and the
         // poller would pay it on every capture, forever.
-        if timedOut.object(forKey: pattern as NSString) != nil { return nil }
+        if isTimedOut(pattern) { return nil }
 
         let haystack = String(text.prefix(matchLimit))
         let range = NSRange(haystack.startIndex..<haystack.endIndex, in: haystack)
@@ -99,19 +99,44 @@ struct TagRule: Equatable {
         }
 
         guard expired else { return found }
-        timedOut.setObject(NSNumber(value: true), forKey: pattern as NSString)
+        markTimedOut(pattern)
         NSLog("Corvo: tag pattern abandoned after \(matchBudget)s and disabled for this run: \(pattern)")
         return nil
     }
 
-    /// Patterns that exhausted the budget. Same reasoning as `cache` for the
-    /// choice of `NSCache`: thread-safe on its own, bounded without a policy.
+    /// Patterns that exhausted the budget.
+    ///
+    /// A plain set behind a lock, deliberately **not** `NSCache`. A cache is
+    /// allowed to evict whenever it likes, and this one held the single fact
+    /// that keeps a pathological pattern from being re-run per item: evict it
+    /// and a retroactive apply over a thousand clippings pays a thousand
+    /// budgets — fifty seconds of frozen UI, under memory pressure, which is
+    /// exactly when the machine could least afford it. It was `NSCache` and the
+    /// suite caught it: the test that proves one budget is paid rather than two
+    /// hundred passed alone and failed beside its neighbours, because they were
+    /// enough to make the cache drop the entry.
+    ///
+    /// Growth is bounded by how many rules the user wrote — tens — so there is
+    /// nothing here worth evicting.
     ///
     /// ponytail: only lives as long as the process, and the user is told nothing
     /// beyond the `NSLog`. A pattern the editor accepted but that turns out to
     /// be pathological on real text stops matching in silence. Upgrade: persist
     /// the fact and surface it as "the rule X was disabled for taking too long".
-    nonisolated(unsafe) private static let timedOut = NSCache<NSString, NSNumber>()
+    nonisolated(unsafe) private static var timedOut: Set<String> = []
+    private static let timedOutLock = NSLock()
+
+    private static func isTimedOut(_ pattern: String) -> Bool {
+        timedOutLock.lock()
+        defer { timedOutLock.unlock() }
+        return timedOut.contains(pattern)
+    }
+
+    private static func markTimedOut(_ pattern: String) {
+        timedOutLock.lock()
+        defer { timedOutLock.unlock() }
+        timedOut.insert(pattern)
+    }
 
     /// `nil` for a pattern that does not compile — a rule the user typed wrong
     /// simply stops matching. Throwing here would kill the poller and with it

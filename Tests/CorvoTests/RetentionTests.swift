@@ -60,7 +60,7 @@ private func textItem(_ s: String) -> CapturedItem {
                         now: now.addingTimeInterval(Double(i)))
     }
 
-    let policy = RetentionPolicy(maxItems: 3, maxAge: .greatestFiniteMagnitude)
+    let policy = RetentionPolicy(maxItems: 3, maxAge: nil)
     let removed = try retention.prune(policy: policy, now: now)
 
     // 5 unprotected, ceiling 3 → removes the 2 oldest. The pinned one stays.
@@ -109,7 +109,7 @@ private func contents(_ repo: ItemRepository) throws -> Set<String> {
     }
 
     let removed = try retention.prune(
-        policy: RetentionPolicy(maxItems: 2, maxAge: .greatestFiniteMagnitude),
+        policy: RetentionPolicy(maxItems: 2, maxAge: nil),
         now: now.addingTimeInterval(1000))
 
     #expect(removed == 1)
@@ -130,11 +130,188 @@ private func contents(_ repo: ItemRepository) throws -> Set<String> {
     }
 
     let removed = try retention.prune(
-        policy: RetentionPolicy(maxItems: 2, maxAge: .greatestFiniteMagnitude),
+        policy: RetentionPolicy(maxItems: 2, maxAge: nil),
         now: now.addingTimeInterval(1000))
 
     #expect(removed == 3)
     #expect(try contents(repo) == ["i3", "i4"])
+}
+
+// MARK: - The sweep that runs on every capture
+
+@Test func theCeilingSweepKeepsTheNewestAndDeletesTheRest() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for i in 0..<5 {
+        try repo.insert(textItem("i\(i)"), source: nil, now: now.addingTimeInterval(Double(i)))
+    }
+
+    let removed = try retention.enforceItemCeiling(policy: RetentionPolicy(maxItems: 2, maxAge: nil))
+
+    #expect(removed == 3)
+    #expect(try contents(repo) == ["i3", "i4"])
+}
+
+/// It is the count rule and nothing else. An expired clipping is left for the
+/// full prune, so the copy path never pays for the age sweep.
+@Test func theCeilingSweepLeavesExpiredItemsAlone() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try repo.insert(textItem("ancient"), source: nil, now: now.addingTimeInterval(-400 * 86400))
+    try repo.insert(textItem("fresh"), source: nil, now: now)
+
+    let removed = try retention.enforceItemCeiling(policy: .standard)
+
+    #expect(removed == 0)
+    #expect(try contents(repo) == ["ancient", "fresh"])
+}
+
+@Test func theCeilingSweepDoesNothingWithNoCeiling() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for i in 0..<4 {
+        try repo.insert(textItem("i\(i)"), source: nil, now: now.addingTimeInterval(Double(i)))
+    }
+
+    #expect(try retention.enforceItemCeiling(policy: RetentionPolicy(maxItems: nil, maxAge: nil)) == 0)
+    #expect(try contents(repo).count == 4)
+}
+
+/// The deliberate deferral, tested so it cannot be "fixed" into existence: the
+/// capture path skips the blob collection because that walks the whole blob
+/// directory on the main thread. The orphan waits for the next full prune.
+@Test func theCeilingSweepLeavesTheBlobForTheNextFullPrune() throws {
+    let (repo, blobs, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try repo.insert(CapturedItem(kind: .image, text: "img", imageData: Data([0x89, 0x50]),
+                                 filePath: nil, url: nil, contentHash: "doomed"),
+                    source: nil, now: now)
+    try repo.insert(textItem("newer"), source: nil, now: now.addingTimeInterval(1))
+
+    #expect(try retention.enforceItemCeiling(policy: RetentionPolicy(maxItems: 1, maxAge: nil)) == 1)
+    // The row is gone and the file is not.
+    #expect(try contents(repo) == ["newer"])
+    #expect(FileManager.default.fileExists(atPath: blobs.url(for: "doomed.png").path))
+
+    try retention.prune(policy: RetentionPolicy(maxItems: 1, maxAge: nil), now: now)
+    #expect(!FileManager.default.fileExists(atPath: blobs.url(for: "doomed.png").path))
+}
+
+@Test func theCeilingSweepProtectsPinnedAndTaggedItems() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let pinned = try repo.insert(textItem("pinned"), source: nil, now: now)
+    let tagged = try repo.insert(textItem("tagged"), source: nil, now: now.addingTimeInterval(1))
+    try repo.setPinned(pinned, true)
+    try repo.addTag(named: "keep", to: tagged)
+    for i in 0..<3 {
+        try repo.insert(textItem("spare\(i)"), source: nil,
+                        now: now.addingTimeInterval(Double(10 + i)))
+    }
+
+    try retention.enforceItemCeiling(policy: RetentionPolicy(maxItems: 1, maxAge: nil))
+
+    let survivors = try contents(repo)
+    #expect(survivors.contains("pinned"))
+    #expect(survivors.contains("tagged"))
+    #expect(survivors.count == 3)
+}
+
+// MARK: - A rule that is switched off
+
+/// Six rows, no ceiling. The count sweep must not run at all — not with a large
+/// number, not with the stored one, not at all.
+@Test func withNoCeilingNothingIsDeletedForBeingNumerous() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    for i in 0..<6 {
+        try repo.insert(textItem("i\(i)"), source: nil, now: now.addingTimeInterval(Double(i)))
+    }
+
+    let removed = try retention.prune(policy: RetentionPolicy(maxItems: nil, maxAge: nil),
+                                      now: now.addingTimeInterval(1000))
+
+    #expect(removed == 0)
+    #expect(try contents(repo).count == 6)
+}
+
+/// Ten years old with no expiry rule. This is the case a stored per-clipping TTL
+/// would have got wrong: the age is compared at prune time, so a rule that is off
+/// leaves the row alone however old `createdAt` says it is.
+@Test func withNoExpiryNothingIsDeletedForBeingOld() throws {
+    let (repo, _, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    try repo.insert(textItem("ancient"), source: nil,
+                    now: now.addingTimeInterval(-3650 * 86400))
+    try repo.insert(textItem("recent"), source: nil, now: now)
+
+    let removed = try retention.prune(policy: RetentionPolicy(maxItems: 100, maxAge: nil),
+                                      now: now)
+
+    #expect(removed == 0)
+    #expect(try contents(repo) == ["ancient", "recent"])
+}
+
+/// Both rules off. Nothing is deleted for any reason — and the blob collection
+/// still runs, because it answers to the rows that exist rather than to a policy.
+@Test func withBothRulesOffTheHistoryOnlyGrows() throws {
+    let (repo, blobs, retention, dir) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let old = now.addingTimeInterval(-4000 * 86400)
+    for i in 0..<4 {
+        try repo.insert(textItem("keep\(i)"), source: nil, now: old.addingTimeInterval(Double(i)))
+    }
+    let id = try repo.insert(CapturedItem(kind: .image, text: "img", imageData: Data([0x89, 0x50]),
+                                          filePath: nil, url: nil, contentHash: "orphan"),
+                             source: nil, now: old)
+
+    let removed = try retention.prune(policy: RetentionPolicy(maxItems: nil, maxAge: nil), now: now)
+    #expect(removed == 0)
+    #expect(FileManager.default.fileExists(atPath: blobs.url(for: "orphan.png").path))
+
+    // Deleted by hand rather than by a rule: the collection is not conditional on
+    // anything having been pruned, and switching both rules off must not switch it
+    // off as a side effect.
+    try repo.delete(id)
+    try retention.prune(policy: RetentionPolicy(maxItems: nil, maxAge: nil), now: now)
+    #expect(!FileManager.default.fileExists(atPath: blobs.url(for: "orphan.png").path))
+}
+
+/// The protection is the user saying "keep this", so it cannot be quietly tied to
+/// which rule happens to be on.
+@Test func pinnedAndTaggedSurviveInAllFourStates() throws {
+    let states = [RetentionPolicy(maxItems: 1, maxAge: 30 * 86400),
+                  RetentionPolicy(maxItems: 1, maxAge: nil),
+                  RetentionPolicy(maxItems: nil, maxAge: 30 * 86400),
+                  RetentionPolicy(maxItems: nil, maxAge: nil)]
+
+    for policy in states {
+        let (repo, _, retention, dir) = try makeEnvironment()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let old = now.addingTimeInterval(-40 * 86400)
+        let pinned = try repo.insert(textItem("pinned"), source: nil, now: old)
+        let tagged = try repo.insert(textItem("tagged"), source: nil, now: old)
+        try repo.setPinned(pinned, true)
+        try repo.addTag(named: "keep", to: tagged)
+        for i in 0..<3 {
+            try repo.insert(textItem("spare\(i)"), source: nil, now: old.addingTimeInterval(Double(i)))
+        }
+
+        try retention.prune(policy: policy, now: now)
+
+        let survivors = try contents(repo)
+        #expect(survivors.contains("pinned"), "pinned lost with \(policy)")
+        #expect(survivors.contains("tagged"), "tagged lost with \(policy)")
+    }
 }
 
 /// Both policies biting at once: the returned count must not add the same item twice

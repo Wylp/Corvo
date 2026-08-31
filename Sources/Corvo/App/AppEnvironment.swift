@@ -32,6 +32,21 @@ final class AppEnvironment {
         monitor.onNeedsName = { [namePrompt] itemId, tag, text in
             namePrompt.ask(toName: itemId, tag: tag.name, preview: text)
         }
+
+        monitor.onDidCapture = { [weak self] in self?.enforceCeiling() }
+    }
+
+    /// The count rule, on the copy path.
+    ///
+    /// Only the count rule: this runs on every capture, and the age sweep and the
+    /// blob collection stay on the hourly timer where their cost is paid once an
+    /// hour instead of once a copy. See `Retention.enforceItemCeiling`.
+    func enforceCeiling() {
+        do {
+            try retention.enforceItemCeiling(policy: prefs.retentionPolicy)
+        } catch {
+            NSLog("Corvo: enforcing the item ceiling failed: \(error)")
+        }
     }
 
     func start() {
