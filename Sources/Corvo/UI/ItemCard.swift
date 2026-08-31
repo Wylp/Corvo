@@ -12,6 +12,10 @@ struct ItemCard: View {
     let item: ClipItem
     let tags: [Tag]
     let isSelected: Bool
+    /// In the ⇧-extended run but not under the cursor. Takes the accent border
+    /// so the run reads as one block, and none of the lift: exactly one card is
+    /// the cursor, and raising the whole run would lose which one.
+    var isMarked: Bool = false
     let blobs: BlobStore
     /// The pointer is on this card, with the card's horizontal centre in screen
     /// coordinates. Fires on every movement across the card, not only on entry,
@@ -66,8 +70,9 @@ struct ItemCard: View {
         .clipShape(RoundedRectangle(cornerRadius: Self.radius))
         .overlay {
             RoundedRectangle(cornerRadius: Self.radius)
-                .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.09),
-                              lineWidth: isSelected ? 2 : 1)
+                .strokeBorder(isSelected || isMarked
+                              ? Color.accentColor : Color.primary.opacity(0.09),
+                              lineWidth: isSelected || isMarked ? 2 : 1)
         }
         .shadow(color: .black.opacity(isSelected ? 0.28 : 0.10),
                 radius: isSelected ? 12 : 3, y: isSelected ? 5 : 1)

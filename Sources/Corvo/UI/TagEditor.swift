@@ -60,7 +60,7 @@ struct TagEditor: View {
     /// selected across the reload that follows.
     let onSaved: (Tag) -> Void
 
-    @State private var preview: [ClipItem] = []
+    @State private var preview: AutoTagger.Matches = .none
     @State private var isConfirmingApply = false
     /// Set when a write came back `nil`. Without it the screen answers a failed
     /// save by not changing, which is exactly what a successful save looks like.
@@ -94,10 +94,21 @@ struct TagEditor: View {
             Button("Cancel", role: .cancel) {}
             Button("Save and apply") { saveAndApply() }
         } message: {
-            Text("""
-                The tag is saved and added to ^[\(preview.count) clipping](inflect: true) \
-                already in your history. Corvo has no undo.
-                """)
+            // The capped wording says which clippings get the tag and which do not.
+            // "Added to 10,000 clippings" would be true and would still leave the
+            // user believing the whole history was covered.
+            if preview.hitLimit {
+                Text("""
+                    The tag is saved and added to the \
+                    ^[\(AutoTagger.previewScanLimit) most recent matching clipping](inflect: true) \
+                    already in your history. Older ones are not tagged. Corvo has no undo.
+                    """)
+            } else {
+                Text("""
+                    The tag is saved and added to ^[\(preview.items.count) clipping](inflect: true) \
+                    already in your history. Corvo has no undo.
+                    """)
+            }
         }
     }
 
@@ -129,7 +140,7 @@ struct TagEditor: View {
                 .labelsHidden()
                 .font(.system(.body, design: .monospaced))
             inline(status.icon, status.tint, Text(status.text))
-            if !preview.isEmpty { sample }
+            if !preview.items.isEmpty { sample }
         }
         .accessibilityElement(children: .contain)
     }
@@ -206,20 +217,39 @@ struct TagEditor: View {
     }
 
     private var status: Status {
-        guard patternIsValid else {
+        switch patternProblem {
+        case .malformed:
             return Status(icon: "exclamationmark.triangle.fill", tint: .red,
                           text: "Not a valid pattern. Check the brackets and escapes.")
+        // Naming the shape is the whole point of this line: "invalid pattern"
+        // tells someone staring at a regex that compiles nothing they can act on.
+        case .tooSlow:
+            return Status(icon: "exclamationmark.triangle.fill", tint: .red,
+                          text: """
+                              This pattern can take hours on some clippings. The cause is \
+                              almost always a repeat wrapped in another repeat — (a+)+ or \
+                              (\\s+)+ — where the inner + or * already covers the outer one. \
+                              Remove the outer repeat.
+                              """)
+        case nil:
+            break
         }
         guard draft.rule.isActive else {
             return Status(icon: "hand.tap", tint: .secondary,
                           text: "No rule yet — this tag is only applied by hand.")
         }
-        guard !preview.isEmpty else {
+        guard !preview.items.isEmpty else {
             return Status(icon: "circle.dashed", tint: .secondary,
                           text: "Nothing you have copied matches yet. New copies still can.")
         }
+        // A cap that bit means there may be older matches this never looked at, so
+        // the count becomes a floor rather than a number pretending to be exact.
+        guard !preview.hitLimit else {
+            return Status(icon: "checkmark.circle.fill", tint: .green,
+                          text: "Matches \(preview.items.count)+ clippings — only the \(AutoTagger.previewScanLimit) most recent were checked.")
+        }
         return Status(icon: "checkmark.circle.fill", tint: .green,
-                      text: "Matches ^[\(preview.count) clipping](inflect: true) in your history.")
+                      text: "Matches ^[\(preview.items.count) clipping](inflect: true) in your history.")
     }
 
     /// The count says whether the pattern matches; the sample says whether it
@@ -227,7 +257,7 @@ struct TagEditor: View {
     /// is the failure the count alone would hide.
     private var sample: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(preview.prefix(Self.sampleCount), id: \.id) { item in
+            ForEach(preview.items.prefix(Self.sampleCount), id: \.id) { item in
                 Text(item.text ?? "")
                     .font(.system(.caption2, design: .monospaced))
                     .lineLimit(1)
@@ -248,7 +278,7 @@ struct TagEditor: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 Button("Apply to existing…") { isConfirmingApply = true }
-                    .disabled(!canSave || preview.isEmpty)
+                    .disabled(!canSave || preview.items.isEmpty)
                     .help("Add this tag to the clippings already in your history that match")
                 Spacer(minLength: 0)
                 Button("Save") { save() }
@@ -277,10 +307,12 @@ struct TagEditor: View {
     }
 
     /// An empty field is not an invalid pattern — it is a tag with no rule.
-    private var patternIsValid: Bool {
-        guard let pattern = draft.pattern, !pattern.isEmpty else { return true }
-        return TagRule.isValid(pattern: pattern)
+    private var patternProblem: TagRule.PatternProblem? {
+        guard let pattern = draft.pattern, !pattern.isEmpty else { return nil }
+        return TagRule.problem(with: pattern)
     }
+
+    private var patternIsValid: Bool { patternProblem == nil }
 
     private var canSave: Bool { !trimmedName.isEmpty && !nameIsTaken && patternIsValid }
 
@@ -317,8 +349,8 @@ struct TagEditor: View {
         draft.sourceBundleId = picked
     }
 
-    private func matches() -> [ClipItem] {
-        guard patternIsValid else { return [] }
+    private func matches() -> AutoTagger.Matches {
+        guard patternIsValid else { return .none }
         return model.items(matching: draft.rule)
     }
 

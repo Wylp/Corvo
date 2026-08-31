@@ -131,3 +131,64 @@ private func makePrefs() -> Preferences {
     prefs.maxAgeDays = 7
     #expect(prefs.retentionPolicy == RetentionPolicy(maxItems: 2_500, maxAge: 7 * 86400))
 }
+
+// MARK: - Switching a rule off
+
+@Test func bothRulesAreOnWhenNothingHasBeenStored() {
+    let prefs = makePrefs()
+    #expect(prefs.limitsItems)
+    #expect(prefs.limitsAge)
+}
+
+/// The upgrade. Someone who has been using Corvo has neither switch in their
+/// plist and a limit they chose; the build that adds the switches has to keep
+/// enforcing exactly what it enforced yesterday.
+///
+/// This is the test that must never be deleted: `defaults.bool(forKey:)` here
+/// instead of `object(forKey:)` reads `false` for an absent key, which would
+/// switch retention off for every existing user with no error and no symptom
+/// until their database was large.
+@Test func aPlistFromBeforeTheSwitchesKeepsItsRetention() {
+    let defaults = UserDefaults(suiteName: UUID().uuidString)!
+    defaults.set(500, forKey: "maxItems")
+    defaults.set(14, forKey: "maxAgeDays")
+
+    let prefs = Preferences(defaults: defaults)
+
+    #expect(prefs.limitsItems)
+    #expect(prefs.limitsAge)
+    #expect(prefs.retentionPolicy == RetentionPolicy(maxItems: 500, maxAge: 14 * 86400))
+}
+
+/// Switching off is not forgetting. The number stays stored, so switching back on
+/// restores what the user chose rather than the default — and the dimmed field has
+/// something true to show meanwhile.
+@Test func switchingARuleOffKeepsItsNumber() {
+    let prefs = makePrefs()
+    prefs.maxItems = 2_500
+
+    prefs.limitsItems = false
+    #expect(prefs.maxItems == 2_500)
+    #expect(prefs.retentionPolicy.maxItems == nil)
+
+    prefs.limitsItems = true
+    #expect(prefs.retentionPolicy.maxItems == 2_500)
+}
+
+@Test func thePolicyMapsAllFourStates() {
+    let prefs = makePrefs()
+    prefs.maxItems = 400
+    prefs.maxAgeDays = 10
+
+    prefs.limitsItems = true; prefs.limitsAge = true
+    #expect(prefs.retentionPolicy == RetentionPolicy(maxItems: 400, maxAge: 10 * 86400))
+
+    prefs.limitsAge = false
+    #expect(prefs.retentionPolicy == RetentionPolicy(maxItems: 400, maxAge: nil))
+
+    prefs.limitsItems = false; prefs.limitsAge = true
+    #expect(prefs.retentionPolicy == RetentionPolicy(maxItems: nil, maxAge: 10 * 86400))
+
+    prefs.limitsAge = false
+    #expect(prefs.retentionPolicy == RetentionPolicy(maxItems: nil, maxAge: nil))
+}
