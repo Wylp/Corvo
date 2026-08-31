@@ -103,17 +103,23 @@ struct AutoTagger {
     func items(matching rule: TagRule) throws -> Matches {
         guard rule.isActive else { return .none }
 
-        // With a ceiling, borrow it: it is exactly how many rows can exist, so the
-        // count is exact and `hitLimit` is meaningless. Without one, the cap above
-        // applies and the caller has to be told when it bit.
-        let ceiling = prefs.retentionPolicy.maxItems
-        let limit = ceiling ?? Self.previewScanLimit
+        // With a ceiling, borrow it — it is the number of unprotected rows the
+        // history is allowed to hold. It is not, however, the number of rows:
+        // `Retention` exempts pinned, named and tagged clippings from the
+        // ceiling, so a history under a ceiling of 1,000 with 300 tagged
+        // clippings holds 1,300, and a scan of 1,000 misses 300 of them.
+        //
+        // So the cap is reported whenever it was filled, ceiling or not. It used
+        // to be reported only when there was no ceiling, on the reasoning that a
+        // ceiling *is* the whole history — which is the one case above, and the
+        // silent undercount this flag exists to prevent.
+        let limit = prefs.retentionPolicy.maxItems ?? Self.previewScanLimit
         let scanned = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: limit)
 
         return Matches(
             items: scanned.filter { rule.matches(text: Self.matchable(kind: $0.kind, text: $0.text),
                                                  sourceBundleId: $0.sourceBundleId) },
-            hitLimit: ceiling == nil && scanned.count == limit)
+            hitLimit: scanned.count == limit)
     }
 
     /// Attaches `tag` to every item its rule already matches, and answers how

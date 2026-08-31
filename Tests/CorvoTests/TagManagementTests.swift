@@ -354,14 +354,13 @@ private func addItem(_ repo: ItemRepository, _ text: String,
     #expect(!previewed.hitLimit)
 }
 
-/// A retention ceiling *is* the whole history, so filling the scan is not a
-/// warning — there is nothing older for it to have missed. Reporting `hitLimit`
-/// here would put "10,000+" on a screen where the count is exact.
-@MainActor @Test func aFullScanUnderARetentionCeilingIsNotFlaggedAsCapped() throws {
+/// A scan that had room to spare saw everything, so there is nothing to warn
+/// about — one row short of the ceiling is what proves the scan was not cut off.
+@MainActor @Test func aScanWithRoomToSpareIsNotFlaggedAsCapped() throws {
     let (repo, tagger, prefs, dir) = try makeTags()
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    prefs.maxItems = 3
+    prefs.maxItems = 4
     for text in ["SELECT 1", "SELECT 2", "SELECT 3"] { try addItem(repo, text) }
 
     let tag = try repo.saveTag(Tag(id: nil, name: "sql", color: nil, pattern: "SELECT"))
@@ -369,4 +368,32 @@ private func addItem(_ repo: ItemRepository, _ text: String,
 
     #expect(previewed.items.count == 3)
     #expect(!previewed.hitLimit)
+}
+
+/// The ceiling is not the size of the history. `Retention` exempts pinned, named
+/// and tagged clippings from it, so the rows can outnumber it — and a scan
+/// borrowing the ceiling then stops short of the oldest ones.
+///
+/// This used to report `hitLimit: false` because a ceiling was set, which is the
+/// silent undercount the flag exists to prevent: the editor would say "Matches 4"
+/// over a history holding six matches.
+@MainActor @Test func aCeilingIsNotTheWholeHistoryOnceClippingsAreProtected() throws {
+    let (repo, tagger, prefs, dir) = try makeTags()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    prefs.maxItems = 4
+    for text in ["SELECT a", "SELECT b", "SELECT c", "SELECT d"] { try addItem(repo, text) }
+    // Pinned, so exempt from the ceiling: six rows under a ceiling of four.
+    for text in ["SELECT p1", "SELECT p2"] {
+        try repo.setPinned(try addItem(repo, text), true)
+    }
+
+    let all = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 100)
+    #expect(all.count == 6)
+
+    let tag = try repo.saveTag(Tag(id: nil, name: "sql", color: nil, pattern: "SELECT"))
+    let previewed = try tagger.items(matching: tag.rule)
+
+    #expect(previewed.items.count == 4)
+    #expect(previewed.hitLimit)
 }
