@@ -11,8 +11,20 @@ struct CorvoApp: App {
         // the menu is open. Colour art there is stuck in one shade and vanishes
         // against half the menu bars it will sit on.
         MenuBarExtra("Corvo", image: "MenuBarIcon") {
-            Button("Show History") { delegate.panel?.show() }
-                .keyboardShortcut("v", modifiers: [.command, .shift])
+            // Printed from the binding that is actually registered. Hardcoded it
+            // would keep advertising ⌘⇧V after a rebind, in the one place a user
+            // looks to find out what the shortcut is.
+            //
+            // Two cases show no shortcut here rather than a wrong one: a cleared
+            // binding, and a key with no single-character `KeyEquivalent` (the
+            // F-keys, the arrows). Carbon has registered it either way — what is
+            // missing is only the menu's decoration.
+            if let shortcut = delegate.binder?.current?.menuShortcut {
+                Button("Show History") { delegate.panel?.show() }
+                    .keyboardShortcut(shortcut.key, modifiers: shortcut.modifiers)
+            } else {
+                Button("Show History") { delegate.panel?.show() }
+            }
             Button("Settings…") { delegate.showSettings() }
                 .keyboardShortcut(",")
             Divider()
@@ -28,13 +40,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var env: AppEnvironment?
     private(set) var panel: PanelController?
     private(set) var model: HistoryModel?
-    private var hotkey: GlobalHotkey?
+    private(set) var binder: HotkeyBinder?
     private lazy var settings = SettingsWindow { [weak self] in
-        guard let env = self?.env else { return nil }
+        guard let env = self?.env, let binder = self?.binder else { return nil }
         // The prune is handed over rather than left to the hourly timer: the
         // user who just confirmed a lower limit should see the history shrink
         // now, not at some unannounced point within the next hour.
-        return AnyView(PreferencesView(prefs: env.prefs, onRetentionLowered: env.runPrune))
+        return AnyView(PreferencesView(
+            prefs: env.prefs,
+            onHotkeyChange: { binder.apply($0) },
+            onRecordingArmed: { armed in armed ? binder.suspend() : binder.resume() },
+            onRetentionLowered: env.runPrune))
     }
 
     func showSettings() { settings.show() }
@@ -90,12 +106,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        hotkey = GlobalHotkey(keyCode: HotkeyCodes.v,
-                              modifiers: HotkeyCodes.cmdShift) { [weak self] in
+        let registrar = GlobalHotkey { [weak self] in
             MainActor.assumeIsolated { self?.panel?.toggle() }
         }
-        if hotkey == nil {
-            NSLog("Corvo: could not register ⌘⇧V — shortcut already taken?")
+        guard let prefs = env?.prefs else { return }
+        let binder = HotkeyBinder(prefs: prefs, registrar: registrar)
+        self.binder = binder
+        if !binder.isRegistered, let wanted = binder.current {
+            // Not silent and not fatal. Another app holds it — Settings is where
+            // the user picks a different one, and the menu bar item still opens
+            // the panel in the meantime.
+            NSLog("Corvo: could not register \(wanted.display) — shortcut already taken?")
         }
     }
 
