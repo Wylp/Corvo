@@ -89,11 +89,17 @@
     "Corvo Settings": {
       "comment": "Title of the Settings window."
     },
-    "Corvo is running with no icon. ⌘⇧V opens the history; opening Corvo again opens Settings.": {
-      "comment": "Caption under the menu bar switch while the icon is hidden."
+    "Corvo is running with no icon and no shortcut. Opening Corvo again opens Settings.": {
+      "comment": "Caption under the menu bar switch while the icon is hidden and the user has also cleared the shortcut, so reopening the app is the only way back."
     },
-    "Corvo keeps running and ⌘⇧V still opens the history. To get Settings back open Corvo again from the Applications folder.": {
-      "comment": "Body of the confirmation shown before the menu bar icon is hidden. Says the app is still there, and how to reach Settings without the icon."
+    "Corvo is running with no icon. %@ opens the history; opening Corvo again opens Settings.": {
+      "comment": "Caption under the menu bar switch while the icon is hidden. %@ is the shortcut currently bound, read live so it cannot go stale when the user rebinds."
+    },
+    "Corvo keeps running and %@ still opens the history. To get Settings back open Corvo again from the Applications folder.": {
+      "comment": "Confirmation body before hiding the menu bar icon. %@ is the shortcut currently bound."
+    },
+    "Corvo keeps running, but with no icon and no shortcut there is nothing left that opens the history. Open Corvo again from the Applications folder to get Settings back, and set a shortcut there.": {
+      "comment": "Caption under the menu bar switch while the icon is hidden and the user has also cleared the shortcut, so reopening the app is the only way back."
     },
     "Corvo needs Accessibility permission to paste straight into the app you were using. The content is already on your clipboard — paste it with ⌘V.\n\nIf Corvo is already switched on in that list, macOS is holding a permission for an older copy of the app: select Corvo, remove it with the − button, then add it again.": {
       "extractionState": "manual",

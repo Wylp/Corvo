@@ -138,9 +138,29 @@ struct PreferencesView: View {
             // Settings is the only destination named. Bringing the icon back is
             // something you do *in* Settings, so saying both made one trip sound
             // like two.
+            hideMessage
+        }
+    }
+
+    /// The routes back, named as the ones that actually exist right now.
+    ///
+    /// The shortcut is read from `shortcutState` rather than written out,
+    /// because it is the user's to change: a sentence saying ⌘⇧V is a sentence
+    /// that goes stale the moment they rebind, in the place they were sent to
+    /// find out how to get back. And it can be cleared entirely — with no icon
+    /// and no shortcut there is one route left, not two, and promising a key
+    /// press that does nothing is worse than saying so.
+    @ViewBuilder private var hideMessage: some View {
+        if let shortcut = shortcutState.hotkey {
             Text("""
-                Corvo keeps running and ⌘⇧V still opens the history. To get \
-                Settings back open Corvo again from the Applications folder.
+                Corvo keeps running and \(shortcut.display) still opens the history. \
+                To get Settings back open Corvo again from the Applications folder.
+                """)
+        } else {
+            Text("""
+                Corvo keeps running, but with no icon and no shortcut there is \
+                nothing left that opens the history. Open Corvo again from the \
+                Applications folder to get Settings back, and set a shortcut there.
                 """)
         }
     }
@@ -198,7 +218,11 @@ struct PreferencesView: View {
                 // exactly as told. It is on screen because the alert that said it
                 // is gone, and this is the one screen that can still say it —
                 // reached, by then, the way the sentence describes.
-                caption("Corvo is running with no icon. ⌘⇧V opens the history; opening Corvo again opens Settings.")
+                if let shortcut = shortcutState.hotkey {
+                    caption("Corvo is running with no icon. \(shortcut.display) opens the history; opening Corvo again opens Settings.")
+                } else {
+                    caption("Corvo is running with no icon and no shortcut. Opening Corvo again opens Settings.")
+                }
             }
         }
     }

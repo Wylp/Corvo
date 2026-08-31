@@ -72,8 +72,9 @@ permission at all.
 ⌘-dragging the icon out of the menu bar does the same thing, and is remembered
 the same way.
 
-Corvo keeps running with the icon gone, and `⌘⇧V` still opens the panel — but
-the menu is where Settings and Quit live, so with no icon there is one way back:
+Corvo keeps running with the icon gone, and your shortcut still opens the panel
+— but the menu is where Settings and Quit live, so with no icon there is one way
+back:
 
 **Open Corvo again** — from the Applications folder, Spotlight, anywhere. The
 copy already running answers by opening Settings, where the switch is. Launching
