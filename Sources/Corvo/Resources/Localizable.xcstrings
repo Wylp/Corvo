@@ -156,6 +156,9 @@
     "Image unavailable": {
       "comment": "Shown on a card whose image file could not be read from disk."
     },
+    "Image, %lld by %lld pixels": {
+      "comment": "VoiceOver label for the picture in the hover preview. The dimensions are the file's true size in pixels, which is the one fact the picture itself cannot state now that the preview has no footer."
+    },
     "Keep at most": {
       "comment": "Label of the field that sets the maximum number of clippings."
     },
@@ -305,6 +308,9 @@
     "Show icon in menu bar": {
       "comment": "Toggle that puts Corvo's icon in the menu bar, or takes it out."
     },
+    "Showing the first %lld of %lld characters": {
+      "comment": "Last line of the hover preview's excerpt, when the clipping was too long to render whole. First number is the preview's budget, second is the clipping's real length."
+    },
     "Shown on the card and searchable. Clear it to remove the name.": {
       "comment": "Helper text under the field in the ⌘R rename sheet."
     },
@@ -335,6 +341,9 @@
     },
     "The tag is saved and added to ^[%lld clipping](inflect: true) already in your history. Corvo has no undo.": {
       "comment": "Message of the retroactive-apply confirmation. %lld is how many clippings will be tagged."
+    },
+    "This file no longer exists": {
+      "comment": "VoiceOver label for the question-mark glyph in the hover preview of a file clipping whose original file is gone from disk. The card says 'Unavailable'."
     },
     "This pattern can take hours on some clippings. The cause is almost always a repeat wrapped in another repeat — (a+)+ or (\\s+)+ — where the inner + or * already covers the outer one. Remove the outer repeat.": {
       "comment": "Status under the pattern field when the regular expression compiles but backtracks catastrophically. It names the shape to look for and what to remove, because \"invalid pattern\" tells someone staring at a regex that compiles nothing they can act on."

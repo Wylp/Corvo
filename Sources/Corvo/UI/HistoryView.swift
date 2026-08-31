@@ -196,7 +196,12 @@ struct HistoryView: View {
                                      isSelected: index == model.selectedIndex,
                                      isMarked: model.isMarked(item),
                                      number: HistoryModel.number(forIndex: index),
-                                     blobs: blobs)
+                                     blobs: blobs,
+                                     onHover: { midX in
+                                         PreviewPanel.shared.hover(item: item, cardMidX: midX,
+                                                                   blobs: blobs)
+                                     },
+                                     onHoverEnd: { PreviewPanel.shared.endHover() })
                                 .id(item.id)
                                 .onTapGesture(count: 2) { onPaste([item]) }
                                 .onTapGesture { model.select(index) }
@@ -378,11 +383,26 @@ struct HistoryView: View {
         .frame(width: 0, height: 0)
     }
 
+    /// Every shortcut in the panel takes the hover preview down on its way
+    /// through, which is what "the keyboard is in charge" means in practice.
+    /// Here rather than in each action because it is true of all of them and
+    /// there is no key that should leave a preview of some other card hanging:
+    /// ←/→ move a selection the preview is not following, ⏎ and ⌘C are on their
+    /// way out of the panel entirely, and ⌘R, ⌘T and ⌘⇧T raise a sheet that a
+    /// floating window would sit on top of.
+    ///
+    /// It never runs the other way: nothing here opens a preview, so arrowing
+    /// through the carousel stays silent.
     private func shortcutButton(_ key: KeyEquivalent,
                                 modifiers: EventModifiers = [],
                                 action: @escaping () -> Void) -> some View {
-        Button(action: action) { EmptyView() }
-            .keyboardShortcut(key, modifiers: modifiers)
+        Button {
+            PreviewPanel.shared.dismiss()
+            action()
+        } label: {
+            EmptyView()
+        }
+        .keyboardShortcut(key, modifiers: modifiers)
     }
 
     /// The field makes a tag; the list below it reaches one that already exists.
