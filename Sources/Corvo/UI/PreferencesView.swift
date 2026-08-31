@@ -120,6 +120,29 @@ struct PreferencesView: View {
         } message: {
             cutMessage
         }
+        .alert("Hide the menu bar icon?", isPresented: $menuBarIcon.isConfirmingHide) {
+            // No `role: .destructive` and no `.defaultAction` on Cancel: nothing
+            // is deleted here and nothing is lost, so the confirmation exists to
+            // hand over the two routes back, not to talk anyone out of it. Hide
+            // is the default button because it is what the user just asked for.
+            Button("Cancel", role: .cancel) {}
+            Button("Hide") { menuBarIcon.confirmHide() }
+        } message: {
+            // Both routes, because either one alone leaves a hole: the shortcut
+            // opens the history but never Settings, and the reopen never shows
+            // the history. Named as the things the user does, not as the
+            // mechanisms — "open Corvo again" is a Finder double-click, a
+            // Spotlight hit or a Dock alias, and all three land in the same
+            // place.
+            //
+            // Settings is the only destination named. Bringing the icon back is
+            // something you do *in* Settings, so saying both made one trip sound
+            // like two.
+            Text("""
+                Corvo keeps running and ⌘⇧V still opens the history. To get \
+                Settings back open Corvo again from the Applications folder.
+                """)
+        }
     }
 
     /// Names the rules that will actually apply, which is now three sentences
@@ -150,29 +173,6 @@ struct PreferencesView: View {
                 Corvo will delete anything older than \
                 ^[\(maxAgeDays) day](inflect: true), however few are left. Pinned \
                 and tagged clippings are never deleted. Corvo has no undo.
-                """)
-        }
-        .alert("Hide the menu bar icon?", isPresented: $menuBarIcon.isConfirmingHide) {
-            // No `role: .destructive` and no `.defaultAction` on Cancel: nothing
-            // is deleted here and nothing is lost, so the confirmation exists to
-            // hand over the two routes back, not to talk anyone out of it. Hide
-            // is the default button because it is what the user just asked for.
-            Button("Cancel", role: .cancel) {}
-            Button("Hide") { menuBarIcon.confirmHide() }
-        } message: {
-            // Both routes, because either one alone leaves a hole: the shortcut
-            // opens the history but never Settings, and the reopen never shows
-            // the history. Named as the things the user does, not as the
-            // mechanisms — "open Corvo again" is a Finder double-click, a
-            // Spotlight hit or a Dock alias, and all three land in the same
-            // place.
-            //
-            // Settings is the only destination named. Bringing the icon back is
-            // something you do *in* Settings, so saying both made one trip sound
-            // like two.
-            Text("""
-                Corvo keeps running and ⌘⇧V still opens the history. To get \
-                Settings back open Corvo again from the Applications folder.
                 """)
         }
     }
