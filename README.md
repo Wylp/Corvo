@@ -210,8 +210,24 @@ encrypted.
 
 Nothing leaves your machine. Corvo has no network code, no account and no sync.
 
-By default the history keeps **1000 clippings for 30 days**, both adjustable in
-Settings. Pinned and tagged clippings are exempt.
+By default the history keeps **1000 clippings for 30 days**. Both numbers are
+adjustable in Settings, and each rule has its own switch, so you can keep a count
+ceiling with no expiry, an expiry with no ceiling, both, or neither:
+
+| Keep at most | Delete after | What you get |
+| --- | --- | --- |
+| on | on | whichever rule bites first — the default |
+| on | off | a fixed-size history, at any age |
+| off | on | clippings expire, however many there are |
+| off | off | nothing is ever deleted |
+
+The count ceiling is enforced as you copy, not on a timer: hit the limit and the
+oldest clipping goes immediately. Switching a rule off keeps its number, so
+switching it back on restores what you chose — and because turning a rule on can
+delete a lot at once, Corvo asks first. With both off nothing is ever deleted and
+the history grows until you delete clippings yourself.
+
+Pinned and tagged clippings are exempt from all of it.
 
 ## Not yet
 
