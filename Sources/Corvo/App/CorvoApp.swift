@@ -5,12 +5,23 @@ import SwiftUI
 struct CorvoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
+    /// Whether the status item is in the menu bar. `@AppStorage` and not a plain
+    /// `@State`, because `isInserted` is written from both ends: Settings switches
+    /// it, and so does ⌘-dragging the icon out of the menu bar — that gesture is a
+    /// request to remove the icon just as much as the switch is, and it would
+    /// otherwise be forgotten on the next launch.
+    ///
+    /// The default belongs here as well as in `Preferences.showsMenuBarIcon`:
+    /// `@AppStorage` returns this when the key is absent, which is the same
+    /// answer, reached the same way, for the same upgrade.
+    @AppStorage(Preferences.showsMenuBarIconKey) private var showsMenuBarIcon = true
+
     var body: some Scene {
         // A template image, not the colour artwork: macOS paints the status item
         // itself — dark on a light menu bar, light on a dark one, inverted while
         // the menu is open. Colour art there is stuck in one shade and vanishes
         // against half the menu bars it will sit on.
-        MenuBarExtra("Corvo", image: "MenuBarIcon") {
+        MenuBarExtra("Corvo", image: "MenuBarIcon", isInserted: $showsMenuBarIcon) {
             // Printed from the binding that is actually registered. Hardcoded it
             // would keep advertising ⌘⇧V after a rebind, in the one place a user
             // looks to find out what the shortcut is.
@@ -54,6 +65,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showSettings() { settings.show() }
+
+    /// Opening Corvo again — from the Applications folder, Spotlight, anywhere —
+    /// opens Settings.
+    ///
+    /// This is the way back. With the menu bar icon switched off there is no
+    /// status item, no Dock icon (`LSUIElement`) and no window, so the running app
+    /// has nothing left to click; launching it a second time only sends this
+    /// reopen event to the process already running, and without a handler that
+    /// event does nothing at all — the app looks broken rather than hidden. The
+    /// switch that hides the icon says this is what to do, so it has to be true.
+    ///
+    /// Answering `false` tells AppKit not to also do its own unhiding pass.
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows: Bool) -> Bool {
+        showSettings()
+        return false
+    }
 
     /// True when this process was launched by `xcodebuild test` as the unit
     /// tests' host application, rather than by a person.

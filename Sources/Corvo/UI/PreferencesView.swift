@@ -51,6 +51,10 @@ struct PreferencesView: View {
     @State private var blocklistText: String
     @State private var loginError: String?
     @State private var isConfirmingCut = false
+    /// The menu bar row, out of the body so it can be asked questions — and so it
+    /// hears the writes this screen did not make. `@StateObject` because the
+    /// window outlives any one body pass and the model owns the observation.
+    @StateObject private var menuBarIcon: MenuBarIconModel
     /// Re-read when the app comes back to the front, because the user grants
     /// this in another application. Recomputing the body also re-reads
     /// `LoginItem`, which the user can change in the same trip.
@@ -76,6 +80,7 @@ struct PreferencesView: View {
         _limitsItems = State(initialValue: prefs.limitsItems)
         _limitsAge = State(initialValue: prefs.limitsAge)
         _blocklistText = State(initialValue: prefs.blocklist.joined(separator: "\n"))
+        _menuBarIcon = StateObject(wrappedValue: MenuBarIconModel(prefs: prefs))
         _shortcutState = State(initialValue: ShortcutState(hotkey: prefs.hotkey))
     }
 
@@ -114,6 +119,29 @@ struct PreferencesView: View {
             Button("Delete", role: .destructive) { applyCut() }
         } message: {
             cutMessage
+        }
+        .alert("Hide the menu bar icon?", isPresented: $menuBarIcon.isConfirmingHide) {
+            // No `role: .destructive` and no `.defaultAction` on Cancel: nothing
+            // is deleted here and nothing is lost, so the confirmation exists to
+            // hand over the two routes back, not to talk anyone out of it. Hide
+            // is the default button because it is what the user just asked for.
+            Button("Cancel", role: .cancel) {}
+            Button("Hide") { menuBarIcon.confirmHide() }
+        } message: {
+            // Both routes, because either one alone leaves a hole: the shortcut
+            // opens the history but never Settings, and the reopen never shows
+            // the history. Named as the things the user does, not as the
+            // mechanisms — "open Corvo again" is a Finder double-click, a
+            // Spotlight hit or a Dock alias, and all three land in the same
+            // place.
+            //
+            // Settings is the only destination named. Bringing the icon back is
+            // something you do *in* Settings, so saying both made one trip sound
+            // like two.
+            Text("""
+                Corvo keeps running and ⌘⇧V still opens the history. To get \
+                Settings back open Corvo again from the Applications folder.
+                """)
         }
     }
 
@@ -164,7 +192,26 @@ struct PreferencesView: View {
                 notice("exclamationmark.triangle.fill", .red,
                        Text("macOS refused the change: \(loginError)"))
             }
+            Toggle("Show icon in menu bar", isOn: showsMenuBarIcon)
+            if !menuBarIcon.isShown {
+                // Not a warning: the user asked for this and Corvo is working
+                // exactly as told. It is on screen because the alert that said it
+                // is gone, and this is the one screen that can still say it —
+                // reached, by then, the way the sentence describes.
+                caption("Corvo is running with no icon. ⌘⇧V opens the history; opening Corvo again opens Settings.")
+            }
         }
+    }
+
+    /// Reads and writes `MenuBarIconModel`, which is where both the decision and
+    /// the stored value live — see that type for why the row cannot simply read
+    /// `prefs` the way `launchAtLogin` reads `LoginItem`.
+    ///
+    /// Written out rather than passed as a method reference for the reason given
+    /// on `launchAtLogin`: Swift 6.1's IRGen crashes building the isolation thunk
+    /// for a `@MainActor` method handed to `Binding`'s non-isolated `set`.
+    private var showsMenuBarIcon: Binding<Bool> {
+        Binding(get: { menuBarIcon.isShown }, set: { menuBarIcon.request($0) })
     }
 
     /// Reads the system on every pass instead of mirroring it into `@State`.
