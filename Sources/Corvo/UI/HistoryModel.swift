@@ -9,9 +9,9 @@ final class HistoryModel {
     private let tagger: AutoTagger
     private var observationCancellable: AnyDatabaseCancellable?
 
-    var query: String = "" { didSet { reload() } }
-    var selectedSource: String? { didSet { reload() } }
-    var selectedTag: Int64? { didSet { reload() } }
+    var query: String = "" { didSet { reloadItems() } }
+    var selectedSource: String? { didSet { reloadItems() } }
+    var selectedTag: Int64? { didSet { reloadItems() } }
     /// The one sheet the panel can have up, or `nil` for none. Lives on the
     /// model rather than in a view so that the sidebar's button and the panel's
     /// ⌘⇧T open the same thing — and so that hiding the panel can clear it.
@@ -85,9 +85,11 @@ final class HistoryModel {
         reload()
     }
 
+    /// Everything the screen shows: the list, and the two sidebars beside it.
+    ///
+    /// Called when something may have changed anywhere — a capture, a delete, a
+    /// tag write, launch.
     func reload() {
-        items = (try? repo.search(text: query, sourceBundleId: selectedSource,
-                                  tagId: selectedTag, limit: 200)) ?? []
         sources = (try? repo.sources()) ?? []
         tags = (try? repo.allTags()) ?? []
         // Through `attempt` like every other write on this screen, and not a
@@ -96,9 +98,22 @@ final class HistoryModel {
         // change exists to provide, alphabetically instead of by use, with
         // nothing anywhere saying why.
         tagUsage = Self.attempt("tagUsage") { try repo.tagUsage() } ?? [:]
+        reloadItems()
+    }
+
+    /// The list alone, for a change that moved only the list.
+    ///
+    /// `sources`, `tags` and `tagUsage` describe the whole history and not the
+    /// filtered view of it — none of the three reads `query`, `selectedSource`
+    /// or `selectedTag` — so a filter change cannot move them. Running them
+    /// anyway is what made one keystroke in the search field four statements
+    /// instead of two, on the main thread, per character.
+    func reloadItems() {
+        items = (try? repo.search(text: query, sourceBundleId: selectedSource,
+                                  tagId: selectedTag, limit: 200)) ?? []
         // One statement for the whole list, rather than one per card at draw
-        // time. Same `attempt` as the line above and for the same reason: an
-        // empty map is not a crash, it is every card quietly losing its tags.
+        // time. Same `attempt` as `tagUsage` and for the same reason: an empty
+        // map is not a crash, it is every card quietly losing its tags.
         tagsByItem = Self.attempt("tagsByItem") {
             try repo.tags(forItems: items.compactMap(\.id))
         } ?? [:]

@@ -446,3 +446,31 @@ private func textItem(_ s: String) -> CapturedItem {
     model.moveFilter(-1)
     #expect(model.selectedSource == nil)
 }
+
+
+/// Typing in the search box moves the list and nothing else. `sources`, `tags`
+/// and `tagUsage` describe the whole history rather than the filtered view of
+/// it, so a filter change cannot move them — and running their statements
+/// anyway put four queries on the main thread per character typed.
+@MainActor @Test func aFilterChangeAsksOnlyAboutTheList() throws {
+    let (model, repo, dir) = try makeModel()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    _ = try repo.insert(textItem("hello world"), source: nil, now: t0)
+    _ = try repo.insert(textItem("goodbye"), source: nil, now: t0.addingTimeInterval(1))
+    let tag = try repo.saveTag(Tag(id: nil, name: "keep", color: nil, pattern: nil))
+    model.reload()
+
+    #expect(model.items.count == 2)
+    let sourcesBefore = model.sources
+    let tagsBefore = model.tags
+
+    model.query = "hello"
+
+    #expect(model.items.count == 1)
+    // The sidebars are untouched: same tags, same sources, still describing the
+    // history rather than the filter.
+    #expect(model.tags == tagsBefore)
+    #expect(model.sources == sourcesBefore)
+    #expect(model.tags.contains { $0.id == tag.id })
+}
