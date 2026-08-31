@@ -84,3 +84,38 @@ private final class QueryCounter: @unchecked Sendable {
 private func settleCarousel() {
     RunLoop.current.run(until: Date().addingTimeInterval(0.6))
 }
+
+
+/// The card decodes to the size it draws, not to the size of the file.
+///
+/// `NSImage(contentsOf:)` decoded at full resolution: a screenshot off a large
+/// display cost tens of megabytes of bitmap to fill 166 points of card, on the
+/// main thread, as the card scrolled into view. The measurement is the decoded
+/// image's own dimensions, which is the thing that was wrong — asserting on time
+/// would be asserting on the machine.
+@Test @MainActor func theCardDecodesAThumbnailRatherThanTheWholeImage() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("corvo-thumb-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    // 4000×3000 is an ordinary screenshot off a large display.
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 4_000, pixelsHigh: 3_000,
+                              bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false,
+                              isPlanar: false, colorSpaceName: .deviceRGB,
+                              bytesPerRow: 0, bitsPerPixel: 0)!
+    let url = dir.appendingPathComponent("big.png")
+    try rep.representation(using: .png, properties: [:])!.write(to: url)
+
+    let thumbnail = try #require(PreviewImage.read(url, maxPixelSize: ItemCard.thumbnailPixels))
+
+    // The header still reports the real size, so nothing is lying about what
+    // the file holds.
+    #expect(thumbnail.pixelWidth == 4_000)
+    #expect(thumbnail.pixelHeight == 3_000)
+
+    // What was decoded is bounded by the card, not by the file.
+    let longestEdge = max(thumbnail.image.size.width, thumbnail.image.size.height)
+    #expect(longestEdge <= CGFloat(ItemCard.thumbnailPixels))
+    #expect(longestEdge > 0)
+}

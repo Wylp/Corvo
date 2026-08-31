@@ -31,6 +31,24 @@ struct ItemCard: View {
     static let width: CGFloat = 190
     static let height: CGFloat = 250
 
+    /// The longest edge ImageIO is asked to decode for the card's thumbnail.
+    ///
+    /// The preview area is 166 points wide, so this is that at 2×, rounded up —
+    /// enough for a Retina panel and nothing beyond it. `NSImage(contentsOf:)`
+    /// was decoding the file at full resolution to draw into this space: a
+    /// screenshot off a 5K display is ~60 MB of bitmap for 166 points of card,
+    /// paid on the main thread as the card scrolls into view.
+    ///
+    /// `PreviewImage.read` was written for the hover preview and its own comment
+    /// names the card as the other place with this problem; this is that place.
+    /// The size comes out of the header and only the thumbnail is decoded, so
+    /// the cost is bounded by this number rather than by what is in the file.
+    ///
+    /// ponytail: read per card build, not cached. #6 made the row lazy, so that
+    /// is the few cards on screen rather than all 200. Cache by blob path if a
+    /// trace ever shows the decode itself.
+    static let thumbnailPixels = 360
+
     private static let radius: CGFloat = 10
 
     /// Around the content region, and therefore what the snippet's line breaks
@@ -331,7 +349,8 @@ struct ItemCard: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         case .image:
             if let path = item.blobPath,
-               let img = NSImage(contentsOf: blobs.url(for: path)) {
+               let img = PreviewImage.read(blobs.url(for: path),
+                                           maxPixelSize: Self.thumbnailPixels)?.image {
                 Image(nsImage: img)
                     .resizable()
                     .scaledToFit()
