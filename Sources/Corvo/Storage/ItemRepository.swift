@@ -153,6 +153,31 @@ final class ItemRepository {
         }
     }
 
+    /// The tags on each of `ids`, in one statement.
+    ///
+    /// The per-item query below is the honest shape for one card; the carousel
+    /// asks for every card it builds, which made the count a function of how
+    /// many cards existed rather than of how much there was to say. Ids absent
+    /// from the result carry no tags — the one caller reads a missing key as
+    /// none, so a row per untagged clipping would be work for no answer.
+    func tags(forItems ids: [Int64]) throws -> [Int64: [Tag]] {
+        guard !ids.isEmpty else { return [:] }
+        let holes = databaseQuestionMarks(count: ids.count)
+        return try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT itemTag.itemId AS itemId, tag.* FROM tag
+                JOIN itemTag ON itemTag.tagId = tag.id
+                WHERE itemTag.itemId IN (\(holes))
+                ORDER BY tag.name
+                """, arguments: StatementArguments(ids))
+            var out: [Int64: [Tag]] = [:]
+            for row in rows {
+                out[row["itemId"], default: []].append(try Tag(row: row))
+            }
+            return out
+        }
+    }
+
     func tags(forItem id: Int64) throws -> [Tag] {
         try dbQueue.read { db in
             try Tag.fetchAll(db, sql: """

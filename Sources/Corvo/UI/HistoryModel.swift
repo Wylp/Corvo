@@ -64,6 +64,8 @@ final class HistoryModel {
     /// shifts every index by one. An index anchor would then span the wrong
     /// cards on the next ⇧-press.
     private var anchorId: Int64?
+    /// The tags of everything in `items`, rebuilt with the list.
+    private var tagsByItem: [Int64: [Tag]] = [:]
 
     /// What ⏎ and ⌘C act on: the run in list order, or the cursor's clipping
     /// when there is no run. List order rather than the order the user extended
@@ -94,6 +96,12 @@ final class HistoryModel {
         // change exists to provide, alphabetically instead of by use, with
         // nothing anywhere saying why.
         tagUsage = Self.attempt("tagUsage") { try repo.tagUsage() } ?? [:]
+        // One statement for the whole list, rather than one per card at draw
+        // time. Same `attempt` as the line above and for the same reason: an
+        // empty map is not a crash, it is every card quietly losing its tags.
+        tagsByItem = Self.attempt("tagsByItem") {
+            try repo.tags(forItems: items.compactMap(\.id))
+        } ?? [:]
         selectedIndex = min(selectedIndex, max(items.count - 1, 0))
         if items.isEmpty { selectedIndex = 0 }
         // A run survives the poller, but only for clippings still in the list: a
@@ -263,9 +271,15 @@ final class HistoryModel {
         (0..<numberedCards).contains(index) ? index + 1 : nil
     }
 
+    /// The tags on a clipping, read from the map `reload` built.
+    ///
+    /// This is called from the body of every card the carousel builds, so it has
+    /// to be a lookup and not a query: it used to ask the database per card,
+    /// which made the query count a function of how many cards were on screen
+    /// and put it on the main thread during a scroll.
     func tags(for item: ClipItem) -> [Tag] {
         guard let id = item.id else { return [] }
-        return (try? repo.tags(forItem: id)) ?? []
+        return tagsByItem[id] ?? []
     }
 
     // MARK: - Walking the filters

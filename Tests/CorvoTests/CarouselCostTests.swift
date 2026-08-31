@@ -10,9 +10,17 @@ import Testing
 /// exactly the kind of claim that stays in a comment long after a refactor has
 /// stopped making it true.
 ///
-/// Tag queries are the probe because they are countable from outside: every
-/// built card asks for its own, so counting the queries counts the cards. The
-/// highlighting and the image loading ride along with them.
+/// Tag queries were the probe because they were countable from outside: every
+/// built card asked for its own, so counting the queries counted the cards.
+///
+/// They no longer are. The list's tags are read once in `reload` now and the
+/// cards look them up in a map, so an arrow press asks nothing — which is the
+/// point of that change, and it leaves this measuring the absence rather than
+/// the count. Kept as the regression guard for the per-card query coming back:
+/// if anything under here starts asking the database per card again, this is
+/// what fails. The laziness of the row itself is guarded by the highlighting
+/// and image work that still ride on a card being built, which nothing here
+/// can count from outside.
 @Test @MainActor func theCarouselOnlyAsksAboutTheCardsItIsShowing() throws {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("corvo-carousel-\(UUID().uuidString)")
