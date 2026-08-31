@@ -1,0 +1,89 @@
+name: test
+
+on:
+  pull_request:
+    branches: [master]
+  # Also on master itself: a green PR can still merge into a red branch when
+  # two of them land close together, and that is exactly when nobody is looking.
+  push:
+    branches: [master]
+
+# A second push to a PR makes the first run pointless. Cancel it rather than
+# pay for both and wait on the stale one.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Corvo.xcodeproj is generated, not committed, and `make test` regenerates
+      # it — so xcodegen has to exist before anything builds.
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Test
+        run: make test
+
+      # The suite passing is not the whole story: this project has a rule that
+      # every user-visible string reaches the String Catalog, and the compiler
+      # extracts them without ever writing them back. A string added in a PR and
+      # not merged into the catalog by hand ships as an untranslatable literal,
+      # and nothing else would catch it.
+      - name: Check the String Catalog covers every extracted string
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+
+          # .stringsdata is JSON, and each table is a *list* of entries. This
+          # read it as a plist and called .keys() on the list: every file threw,
+          # the except swallowed it, and an empty result used to exit 0 as
+          # "nothing to compare". The check sat green while four strings from
+          # the multi-select PR went missing.
+          keys, scanned, unreadable = set(), 0, []
+          for root, _, files in os.walk("."):
+              for f in files:
+                  if not f.endswith(".stringsdata"):
+                      continue
+                  path = os.path.join(root, f)
+                  try:
+                      data = json.loads(pathlib.Path(path).read_text())
+                  except Exception as error:
+                      unreadable.append(f"{path}: {error}")
+                      continue
+                  # Corvo's own sources only. A dependency that ships localized
+                  # strings has its own catalog and is not this one's business.
+                  if "/Sources/Corvo/" not in data.get("source", ""):
+                      continue
+                  scanned += 1
+                  for table in data.get("tables", {}).values():
+                      keys.update(e["key"] for e in table if "key" in e)
+
+          if unreadable:
+              print("Unreadable .stringsdata — the format moved again, fix this script:")
+              for u in unreadable[:5]:
+                  print("  -", u)
+              sys.exit(1)
+
+          # Not a skip. The app has user-visible strings, so extracting none means
+          # the build did not run or the format changed — the two ways this check
+          # can stop working. Passing quietly on that is the bug it just had.
+          if not keys:
+              print(f"No strings extracted from {scanned} Corvo .stringsdata files.")
+              print("The check cannot do its job — failing instead of passing quietly.")
+              sys.exit(1)
+
+          catalog = json.loads(
+              pathlib.Path("Sources/Corvo/Resources/Localizable.xcstrings").read_text()
+          )
+          missing = sorted(keys - set(catalog["strings"]))
+          if missing:
+              print("Strings extracted by the build but absent from the catalog:")
+              for k in missing:
+                  print("  -", k.replace("\n", " / ")[:120])
+              sys.exit(1)
+          print(f"catalog covers all {len(keys)} extracted strings")
+          PY

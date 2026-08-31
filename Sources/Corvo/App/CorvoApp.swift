@@ -11,8 +11,20 @@ struct CorvoApp: App {
         // the menu is open. Colour art there is stuck in one shade and vanishes
         // against half the menu bars it will sit on.
         MenuBarExtra("Corvo", image: "MenuBarIcon") {
-            Button("Show History") { delegate.panel?.show() }
-                .keyboardShortcut("v", modifiers: [.command, .shift])
+            // Printed from the binding that is actually registered. Hardcoded it
+            // would keep advertising ⌘⇧V after a rebind, in the one place a user
+            // looks to find out what the shortcut is.
+            //
+            // Two cases show no shortcut here rather than a wrong one: a cleared
+            // binding, and a key with no single-character `KeyEquivalent` (the
+            // F-keys, the arrows). Carbon has registered it either way — what is
+            // missing is only the menu's decoration.
+            if let shortcut = delegate.binder?.current?.menuShortcut {
+                Button("Show History") { delegate.panel?.show() }
+                    .keyboardShortcut(shortcut.key, modifiers: shortcut.modifiers)
+            } else {
+                Button("Show History") { delegate.panel?.show() }
+            }
             Button("Settings…") { delegate.showSettings() }
                 .keyboardShortcut(",")
             Divider()
@@ -28,13 +40,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var env: AppEnvironment?
     private(set) var panel: PanelController?
     private(set) var model: HistoryModel?
-    private var hotkey: GlobalHotkey?
+    private(set) var binder: HotkeyBinder?
     private lazy var settings = SettingsWindow { [weak self] in
-        guard let env = self?.env else { return nil }
+        guard let env = self?.env, let binder = self?.binder else { return nil }
         // The prune is handed over rather than left to the hourly timer: the
         // user who just confirmed a lower limit should see the history shrink
         // now, not at some unannounced point within the next hour.
-        return AnyView(PreferencesView(prefs: env.prefs, onRetentionLowered: env.runPrune))
+        return AnyView(PreferencesView(
+            prefs: env.prefs,
+            onHotkeyChange: { binder.apply($0) },
+            onRecordingArmed: { armed in armed ? binder.suspend() : binder.resume() },
+            onRetentionLowered: env.runPrune))
     }
 
     func showSettings() { settings.show() }
@@ -66,8 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 content: HistoryView(
                     model: model,
                     blobs: env.blobs,
-                    onPaste: { [weak self] item in self?.paste(item) },
-                    onCopy: { [weak self] item in self?.copy(item) }
+                    onPaste: { [weak self] items in self?.paste(items) },
+                    onCopy: { [weak self] items in self?.copy(items) }
                 ),
                 // The panel is hidden, not destroyed, so nothing else would ever
                 // put the sheet away: it would be back on top the next time the
@@ -90,25 +106,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        hotkey = GlobalHotkey(keyCode: HotkeyCodes.v,
-                              modifiers: HotkeyCodes.cmdShift) { [weak self] in
+        let registrar = GlobalHotkey { [weak self] in
             MainActor.assumeIsolated { self?.panel?.toggle() }
         }
-        if hotkey == nil {
-            NSLog("Corvo: could not register ⌘⇧V — shortcut already taken?")
+        guard let prefs = env?.prefs else { return }
+        let binder = HotkeyBinder(prefs: prefs, registrar: registrar)
+        self.binder = binder
+        if !binder.isRegistered, let wanted = binder.current {
+            // Not silent and not fatal. Another app holds it — Settings is where
+            // the user picks a different one, and the menu bar item still opens
+            // the panel in the meantime.
+            NSLog("Corvo: could not register \(wanted.display) — shortcut already taken?")
         }
     }
 
     /// Order matters: the panel has to be out of the way before the previous app
     /// is reactivated, or the ⌘V is delivered to the window that is going away.
-    private func paste(_ item: ClipItem) {
-        guard let env else { return }
+    private func paste(_ items: [ClipItem]) {
+        guard let env, !items.isEmpty else { return }
         panel?.hide()
-        model?.markUsed(item)
-        let pasted = Paster.paste(item, blobs: env.blobs, into: env.tracker.focusedApp)
+        let outcome = Paster.paste(items, blobs: env.blobs, into: env.tracker.focusedApp)
         env.monitor.ignoreCurrentContents()
-        guard !pasted else { return }
-        warnMissingPermission()
+        // Stamped after the call and not before it. `lastUsedAt` is meant to
+        // record a clipping the user actually got, and a paste refused for want
+        // of Accessibility would otherwise mark the whole run as used — the
+        // ordering was survivable with one clipping and stops being so with
+        // five.
+        if outcome != .nothingToWrite { items.forEach { model?.markUsed($0) } }
+        switch outcome {
+        case .pasted: return
+        case .noPermission: warnMissingPermission()
+        case .nothingToWrite: warnNothingToWrite()
+        case .partial(let pasted, let total): warnPartial(pasted: pasted, of: total)
+        }
     }
 
     /// ⌘C: the clipping goes to the clipboard and nowhere else — no app is
@@ -119,12 +149,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// write. Text would merely dedupe, but an image goes back out as TIFF and
     /// re-encodes to a PNG whose bytes differ from the stored blob — a fresh
     /// hash, a new row and a new blob on every copy.
-    private func copy(_ item: ClipItem) {
-        guard let env else { return }
-        Paster.writeToClipboard(item, blobs: env.blobs)
+    private func copy(_ items: [ClipItem]) {
+        guard let env, !items.isEmpty else { return }
+        let written = Paster.writeToClipboard(items, blobs: env.blobs)
         panel?.hide()
-        model?.markUsed(item)
+        if written > 0 { items.forEach { model?.markUsed($0) } }
         env.monitor.ignoreCurrentContents()
+        // ⌘C loses clippings the same way ⏎ does, and saying so on one path only
+        // would leave the quieter half of the pair silent.
+        if written == 0 { return warnNothingToWrite() }
+        if written < items.count { warnPartial(pasted: written, of: items.count) }
+    }
+
+    /// The clipping had nothing left to put on the clipboard — a copied file
+    /// that has since been moved or deleted. It used to report success and close
+    /// the panel, which looked exactly like the app ignoring the keypress.
+    private func warnNothingToWrite() {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Nothing left to paste")
+        alert.informativeText = String(localized: """
+            The file this clipping points at has been moved or deleted. Corvo \
+            keeps a reference to files rather than a copy of them, so there is \
+            nothing left to put on the clipboard.
+            """)
+        alert.addButton(withTitle: String(localized: "OK"))
+        alert.runModal()
+    }
+
+    /// Said out loud because the alternative is losing a clipping in silence.
+    /// The panel is already down by the time this is known, so an inline note
+    /// has nowhere to appear — and this is the same class of thing the two
+    /// warnings above exist for: what the user asked for is not what happened.
+    private func warnPartial(pasted: Int, of total: Int) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Pasted \(pasted) of \(total)")
+        alert.informativeText = String(localized: """
+            The clipboard holds one thing at a time, so several clippings go \
+            over joined into one. Images have no text to join, so they are left \
+            out — paste them one at a time.
+            """)
+        alert.addButton(withTitle: String(localized: "OK"))
+        alert.runModal()
     }
 
     /// `NSAlert` takes plain strings, not `LocalizedStringKey`, so these have to
@@ -136,6 +201,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Corvo needs Accessibility permission to paste straight into the app \
             you were using. The content is already on your clipboard — paste it \
             with ⌘V.
+
+            If Corvo is already switched on in that list, macOS is holding a \
+            permission for an older copy of the app: select Corvo, remove it \
+            with the − button, then add it again.
             """)
         alert.addButton(withTitle: String(localized: "Open Settings"))
         alert.addButton(withTitle: String(localized: "Not now"))

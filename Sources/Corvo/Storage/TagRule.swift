@@ -30,9 +30,12 @@ struct TagRule: Equatable {
         guard let pattern else { return true }
         guard let regex = Self.regex(for: pattern), let text else { return false }
 
-        let haystack = String(text.prefix(Self.matchLimit))
-        let range = NSRange(haystack.startIndex..<haystack.endIndex, in: haystack)
-        return regex.firstMatch(in: haystack, range: range) != nil
+        guard let matched = Self.search(regex, in: text, pattern: pattern) else {
+            // Ran out of time. A rule that cannot answer must not answer "yes":
+            // tagging is not undoable and a timeout says nothing about content.
+            return false
+        }
+        return matched
     }
 
     // ponytail: only the first 8 KB of the text is matched. This runs on every
@@ -41,6 +44,99 @@ struct TagRule: Equatable {
     // that would only match past the cut is missed. Upgrade: move matching off
     // the main actor and apply the tags asynchronously.
     private static let matchLimit = 8_192
+
+    /// How long a single pattern may run against a single text before it is
+    /// abandoned.
+    ///
+    /// Calibration, not a magic number. The floor is set by legitimate work:
+    /// every non-pathological pattern measured against the full 8 KB window
+    /// finished in under 0,001 s, so 0,05 s is fifty times the honest cost. The
+    /// ceiling is set by the poller: it fires every 0,3 s and evaluates one
+    /// budget per rule, so a handful of rules that all give up still leaves the
+    /// tick inside its interval. Lower it if a user's rule list ever grows past
+    /// a few, raise it only with a measurement in hand.
+    private static let matchBudget: TimeInterval = 0.05
+
+    /// `firstMatch` with a real time limit.
+    ///
+    /// `NSRegularExpression` exposes no timeout, but `enumerateMatches` with
+    /// `.reportProgress` calls back periodically *during* a match — including
+    /// deep inside catastrophic backtracking — and honours `stop` there. That
+    /// callback is the whole fix: it makes the abandonment cooperative, on this
+    /// thread, with no second thread left spinning behind it.
+    ///
+    /// Returns `nil` when the budget ran out.
+    ///
+    /// The pattern is the user's, but the text is whatever any app put on the
+    /// pasteboard, and that asymmetry is what makes an accidentally exponential
+    /// pattern — `^(\s+)+\S`, say — a permanent freeze rather than a slow tick.
+    /// Measured before this guard: `(a+)+$` against 30 characters took 46 s, and
+    /// 40 characters would have taken hours.
+    private static func search(_ regex: NSRegularExpression, in text: String,
+                               pattern: String) -> Bool? {
+        // A pattern that has already blown the budget once is not asked again.
+        // Without this the editor's preview and the retroactive apply would pay
+        // the budget per item — a thousand rows is a thousand timeouts — and the
+        // poller would pay it on every capture, forever.
+        if isTimedOut(pattern) { return nil }
+
+        let haystack = String(text.prefix(matchLimit))
+        let range = NSRange(haystack.startIndex..<haystack.endIndex, in: haystack)
+        let deadline = Date().addingTimeInterval(matchBudget)
+        var found = false
+        var expired = false
+
+        regex.enumerateMatches(in: haystack, options: [.reportProgress], range: range) {
+            result, flags, stop in
+            if result != nil {
+                found = true
+                stop.pointee = true
+                return
+            }
+            guard flags.contains(.progress), Date() > deadline else { return }
+            expired = true
+            stop.pointee = true
+        }
+
+        guard expired else { return found }
+        markTimedOut(pattern)
+        NSLog("Corvo: tag pattern abandoned after \(matchBudget)s and disabled for this run: \(pattern)")
+        return nil
+    }
+
+    /// Patterns that exhausted the budget.
+    ///
+    /// A plain set behind a lock, deliberately **not** `NSCache`. A cache is
+    /// allowed to evict whenever it likes, and this one held the single fact
+    /// that keeps a pathological pattern from being re-run per item: evict it
+    /// and a retroactive apply over a thousand clippings pays a thousand
+    /// budgets — fifty seconds of frozen UI, under memory pressure, which is
+    /// exactly when the machine could least afford it. It was `NSCache` and the
+    /// suite caught it: the test that proves one budget is paid rather than two
+    /// hundred passed alone and failed beside its neighbours, because they were
+    /// enough to make the cache drop the entry.
+    ///
+    /// Growth is bounded by how many rules the user wrote — tens — so there is
+    /// nothing here worth evicting.
+    ///
+    /// ponytail: only lives as long as the process, and the user is told nothing
+    /// beyond the `NSLog`. A pattern the editor accepted but that turns out to
+    /// be pathological on real text stops matching in silence. Upgrade: persist
+    /// the fact and surface it as "the rule X was disabled for taking too long".
+    nonisolated(unsafe) private static var timedOut: Set<String> = []
+    private static let timedOutLock = NSLock()
+
+    private static func isTimedOut(_ pattern: String) -> Bool {
+        timedOutLock.lock()
+        defer { timedOutLock.unlock() }
+        return timedOut.contains(pattern)
+    }
+
+    private static func markTimedOut(_ pattern: String) {
+        timedOutLock.lock()
+        defer { timedOutLock.unlock() }
+        timedOut.insert(pattern)
+    }
 
     /// `nil` for a pattern that does not compile — a rule the user typed wrong
     /// simply stops matching. Throwing here would kill the poller and with it
@@ -53,10 +149,64 @@ struct TagRule: Equatable {
     /// unbounded.
     nonisolated(unsafe) private static let cache = NSCache<NSString, NSRegularExpression>()
 
-    /// Whether a pattern the user is typing would compile. The same call the
-    /// matcher makes, so the editor can never accept a pattern the poller would
-    /// go on to drop in silence.
-    static func isValid(pattern: String) -> Bool { regex(for: pattern) != nil }
+    /// Why the editor refuses a pattern. Two reasons, because they need two
+    /// different sentences: one is a typo, the other is a shape.
+    enum PatternProblem {
+        /// Does not compile.
+        case malformed
+        /// Compiles, but blew `matchBudget` on a probe — the pattern is
+        /// exponential in the length of the text and would freeze the poller.
+        case tooSlow
+    }
+
+    /// Strings built to make a backtracking pattern do its worst: a long run of
+    /// one repeated character, which is what forces the engine to retry every
+    /// partition of the run.
+    ///
+    /// The alphabet comes from the pattern itself, and it has to: the run must
+    /// be something the pattern's inner quantifier will actually consume, and a
+    /// fixed alphabet of `a`, `1` and space never triggers `(d+)+$`. Taking the
+    /// pattern's own letters, digits and blanks costs nothing and covers the
+    /// literals people write.
+    ///
+    /// Two shapes per character, because the two families fail differently: a
+    /// bare run defeats a pattern that needs one more character after it
+    /// (`^(\s+)+\S`), and a run followed by a character it cannot consume
+    /// defeats an anchored one (`(a+)+$`).
+    ///
+    /// 40 is past the knee: `(a+)+$` measured 46 s at 30 characters and doubles
+    /// per character, so anything exponential is far beyond the budget here
+    /// while anything linear stays in microseconds.
+    private static func probes(for pattern: String) -> [String] {
+        var alphabet: Set<Character> = ["a", "1", " "]
+        alphabet.formUnion(pattern.filter { $0.isLetter || $0.isNumber || $0 == " " })
+        return alphabet.flatMap { character -> [String] in
+            let run = String(repeating: character, count: 40)
+            return [run, run + "!"]
+        }
+    }
+
+    /// What is wrong with a pattern the user is typing, or `nil` for a pattern
+    /// the matcher will accept. The editor asks this so a rule can never be
+    /// saved that the poller would go on to drop in silence.
+    ///
+    /// ponytail: the cost check runs the pattern against degenerate strings, it
+    /// does not analyse it. Parsing the regex to find quantified nesting would
+    /// be exact and is a parser nobody needs — the probes catch the shapes
+    /// people actually type, and `matchBudget` in `search` is the real guarantee
+    /// for whatever they miss. Measured: catches `(a+)+$`, `(d+)+$`, `(x+x+)+y`,
+    /// `^(\s+)+\S` and `(\w+\s?)+KEY`, and costs 0,0000 s on every legitimate
+    /// pattern tried. The ceiling: a pattern exponential only on characters it
+    /// never mentions saves fine, and then costs one abandoned match per run.
+    static func problem(with pattern: String) -> PatternProblem? {
+        guard let regex = regex(for: pattern) else { return .malformed }
+        for probe in probes(for: pattern) where search(regex, in: probe, pattern: pattern) == nil {
+            return .tooSlow
+        }
+        return nil
+    }
+
+    static func isValid(pattern: String) -> Bool { problem(with: pattern) == nil }
 
     private static func regex(for pattern: String) -> NSRegularExpression? {
         if let cached = cache.object(forKey: pattern as NSString) { return cached }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The panel. Search spans the top, filters sit on the left, the carousel takes
@@ -9,10 +10,12 @@ import SwiftUI
 struct HistoryView: View {
     @Bindable var model: HistoryModel
     let blobs: BlobStore
-    let onPaste: (ClipItem) -> Void
+    /// Takes the whole selection, which is one clipping until ⇧← or ⇧→ makes it
+    /// a run.
+    let onPaste: ([ClipItem]) -> Void
     /// ⌘C: put the clipping on the clipboard and stop there. The other half of
     /// ⏎, for pasting somewhere Corvo cannot reach or at a moment it cannot pick.
-    let onCopy: (ClipItem) -> Void
+    let onCopy: ([ClipItem]) -> Void
 
     @State private var tagText = ""
     @State private var nameText = ""
@@ -73,10 +76,25 @@ struct HistoryView: View {
                     HStack(spacing: 12) {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                             ItemCard(item: item, tags: model.tags(for: item),
-                                     isSelected: index == model.selectedIndex, blobs: blobs)
+                                     isSelected: index == model.selectedIndex,
+                                     isMarked: model.isMarked(item), blobs: blobs)
                                 .id(item.id)
-                                .onTapGesture(count: 2) { onPaste(item) }
-                                .onTapGesture { model.selectedIndex = index }
+                                .onTapGesture(count: 2) { onPaste([item]) }
+                                .onTapGesture { model.select(index) }
+                                // ⇧-click, the way a range is selected in every
+                                // list on this platform. `highPriorityGesture`
+                                // and not `.gesture`, because the plain tap
+                                // above would otherwise win and collapse the
+                                // run it is meant to extend.
+                                // ⌘-click before ⇧-click: both are high priority,
+                                // and the first registered is the first
+                                // consulted.
+                                .highPriorityGesture(
+                                    TapGesture().modifiers(.command)
+                                        .onEnded { model.toggleMark(at: index) })
+                                .highPriorityGesture(
+                                    TapGesture().modifiers(.shift)
+                                        .onEnded { model.extendSelection(to: index) })
                         }
                     }
                     .padding(.horizontal, 20)
@@ -112,6 +130,13 @@ struct HistoryView: View {
         HStack(spacing: 14) {
             KeycapHint(key: "⏎", label: "Paste")
             KeycapHint(key: "⌘C", label: "Copy")
+            // Third because it changes what the first two act on, so it reads
+            // as a qualifier of them rather than another thing to do — and the
+            // label has to say so. Every other hint in this rail names a key
+            // that performs its action on its own; ⇧ performs nothing. "Select
+            // several" next to a lone ⇧ promises a key that does something when
+            // pressed, and pressing it does nothing at all.
+            KeycapHint(key: "⇧⌘", label: "Hold and click to select several")
             KeycapHint(key: "⌘P", label: "Pin")
             // Before ⌘T, and the pair reads in the order the words mean: name
             // this one thing, then file it with the others.
@@ -132,15 +157,21 @@ struct HistoryView: View {
     /// an empty key in the String Catalog.
     private var shortcuts: some View {
         Group {
-            shortcutButton(.leftArrow) { model.move(-1) }
-            shortcutButton(.rightArrow) { model.move(1) }
+            // One shortcut per arrow, not two. Registering ⇧+arrow as its own
+            // shortcut looks right and is not: SwiftUI hands the ⇧ variant every
+            // press of that key, so a bare arrow extended the run instead of
+            // moving through it. Reading the flag at the moment of the press is
+            // the version that holds.
+            shortcutButton(.leftArrow) { arrow(-1) }
+            shortcutButton(.rightArrow) { arrow(1) }
             shortcutButton(.return) { pasteSelected() }
             // Wins over the search field's own ⌘C: a shortcut registered on the
             // window's views is consulted before the menu item the field relies
             // on. Copying a card is what the panel is open for; copying the
             // query back out of the search box is not.
             shortcutButton("c", modifiers: .command) {
-                if let item = model.selectedItem { onCopy(item) }
+                guard !model.selectedItems.isEmpty else { return }
+                onCopy(model.selectedItems)
             }
             // ⌘⌫, not a bare ⌫: the search field holds focus while the panel is
             // open, so an unmodified Delete either steals backspace from the
@@ -223,15 +254,19 @@ struct HistoryView: View {
     }
 
     private func confirmTag() {
-        if let item = model.selectedItem {
-            model.addTag(tagText, to: item)
-        }
+        model.addTag(tagText, to: model.selectedItems)
         model.sheet = nil
     }
 
+    /// `NSEvent.modifierFlags` is the state right now, which during the handler
+    /// for the key that was just pressed is the state that key was pressed with.
+    private func arrow(_ step: Int) {
+        model.arrow(step, extending: NSEvent.modifierFlags.contains(.shift))
+    }
+
     private func pasteSelected() {
-        guard let item = model.selectedItem else { return }
-        onPaste(item)
+        guard !model.selectedItems.isEmpty else { return }
+        onPaste(model.selectedItems)
     }
 
     /// Reads the selection through `selectedItem`, the model's own bounds-checked

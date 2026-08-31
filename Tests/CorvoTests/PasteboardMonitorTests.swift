@@ -268,3 +268,70 @@ private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
     try monitor.poll(now: t0.addingTimeInterval(2))
     #expect(captures == 0)
 }
+
+// MARK: - Image decompression bombs
+
+/// A bilevel TIFF: one bit per pixel, so a payload declaring tens of millions of
+/// pixels costs almost nothing to build here — which is the whole shape of the
+/// attack. The real measurement is worse than anything this test can afford to
+/// allocate: a 4,67 MB RGBA TIFF of 16 000 × 16 000 decoded to 998 MB of RSS and
+/// held the main thread for 1,396 s, inside a poller that fires every 0,3 s.
+private func oversizedImage(width: Int, height: Int) -> Data {
+    let bytesPerRow = (width + 7) / 8
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                               bitsPerSample: 1, samplesPerPixel: 1, hasAlpha: false,
+                               isPlanar: false, colorSpaceName: .deviceWhite,
+                               bytesPerRow: bytesPerRow, bitsPerPixel: 1)!
+    memset(rep.bitmapData!, 0, bytesPerRow * height)
+    return rep.representation(using: .tiff,
+                              properties: [.compressionMethod:
+                                            NSNumber(value: NSBitmapImageRep.TIFFCompression.lzw.rawValue)])!
+}
+
+/// Past the ceiling the capture is dropped whole. Not stored small, not stored
+/// truncated: a blob is what makes this bomb persistent — it would be decoded
+/// again on every redraw of the card — so it must never reach the disk.
+@MainActor @Test func discardsAnImageThatDeclaresMorePixelsThanTheCeiling() throws {
+    let (pb, repo, monitor, dir, _, _) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    // 48 MPx against a 40 MPx ceiling, in under a kilobyte of pasteboard.
+    let bomb = oversizedImage(width: 8_000, height: 6_000)
+    #expect(bomb.count < 100_000)
+
+    pb.changeCount += 1
+    pb.availableTypes = [.tiff]
+    pb.dataByType = [.tiff: bomb]
+    pb.stringsByType = [:]
+    pb.urls = []
+
+    let started = Date()
+    try monitor.poll(now: t0)
+    // Refused from the header, so no decode is paid for. The unguarded path
+    // decoded this same payload in 0,323 s and a real RGBA bomb in 1,396 s.
+    #expect(Date().timeIntervalSince(started) < 0.2)
+
+    let items = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(items.isEmpty)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty)
+}
+
+/// The other direction: the ceiling is calibrated to clear any real screen
+/// capture, so an image under it still has to be stored.
+@MainActor @Test func stillCapturesAnImageUnderTheCeiling() throws {
+    let (pb, repo, monitor, dir, _, _) = try makeEnvironment()
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    // 32 MPx — larger than a 6K display grab, and comfortably under 40 MPx.
+    pb.changeCount += 1
+    pb.availableTypes = [.tiff]
+    pb.dataByType = [.tiff: oversizedImage(width: 8_000, height: 4_000)]
+    pb.stringsByType = [:]
+    pb.urls = []
+
+    try monitor.poll(now: t0)
+
+    let items = try repo.search(text: "", sourceBundleId: nil, tagId: nil, limit: 50)
+    #expect(items.map(\.kind) == [.image])
+    #expect(items.first?.blobPath != nil)
+}

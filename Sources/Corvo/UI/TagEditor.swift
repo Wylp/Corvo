@@ -217,9 +217,22 @@ struct TagEditor: View {
     }
 
     private var status: Status {
-        guard patternIsValid else {
+        switch patternProblem {
+        case .malformed:
             return Status(icon: "exclamationmark.triangle.fill", tint: .red,
                           text: "Not a valid pattern. Check the brackets and escapes.")
+        // Naming the shape is the whole point of this line: "invalid pattern"
+        // tells someone staring at a regex that compiles nothing they can act on.
+        case .tooSlow:
+            return Status(icon: "exclamationmark.triangle.fill", tint: .red,
+                          text: """
+                              This pattern can take hours on some clippings. The cause is \
+                              almost always a repeat wrapped in another repeat — (a+)+ or \
+                              (\\s+)+ — where the inner + or * already covers the outer one. \
+                              Remove the outer repeat.
+                              """)
+        case nil:
+            break
         }
         guard draft.rule.isActive else {
             return Status(icon: "hand.tap", tint: .secondary,
@@ -294,10 +307,12 @@ struct TagEditor: View {
     }
 
     /// An empty field is not an invalid pattern — it is a tag with no rule.
-    private var patternIsValid: Bool {
-        guard let pattern = draft.pattern, !pattern.isEmpty else { return true }
-        return TagRule.isValid(pattern: pattern)
+    private var patternProblem: TagRule.PatternProblem? {
+        guard let pattern = draft.pattern, !pattern.isEmpty else { return nil }
+        return TagRule.problem(with: pattern)
     }
+
+    private var patternIsValid: Bool { patternProblem == nil }
 
     private var canSave: Bool { !trimmedName.isEmpty && !nameIsTaken && patternIsValid }
 

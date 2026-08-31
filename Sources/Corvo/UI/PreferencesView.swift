@@ -20,6 +20,18 @@ import UniformTypeIdentifiers
 struct PreferencesView: View {
     let prefs: Preferences
 
+    /// Registers the shortcut and reports what the system said. `false` means it
+    /// was refused and nothing changed — this is the only setting in the window
+    /// that can be turned down by something outside the app.
+    let onHotkeyChange: @MainActor (Hotkey?) -> Bool
+
+    /// Called when the recorder arms and disarms, so the live shortcut can come
+    /// down while it is armed. Without it the one combination the user cannot
+    /// record is the one already bound: a Carbon global shortcut is dispatched
+    /// ahead of the app's own key handling, so pressing it would open the panel
+    /// over this window instead of landing in the recorder.
+    let onRecordingArmed: @MainActor (Bool) -> Void
+
     /// Runs the prune. Called once the user has confirmed a lower limit, so the
     /// deletion they were warned about happens while they are still looking at
     /// the screen that caused it. Deferring it to the hourly timer would not
@@ -43,23 +55,34 @@ struct PreferencesView: View {
     /// this in another application. Recomputing the body also re-reads
     /// `LoginItem`, which the user can change in the same trip.
     @State private var hasAccessibility = Paster.hasPermission
+    /// The shortcut row: what it shows, and why the last attempt did not take.
+    /// Seeded from `prefs` and moved only by `ShortcutEditor`, which is where the
+    /// rule about refused shortcuts lives and where it is tested.
+    @State private var shortcutState: ShortcutState
     @FocusState private var focus: Field?
 
     private enum Field { case items, days }
 
-    init(prefs: Preferences, onRetentionLowered: @escaping @MainActor () -> Void = {}) {
+    init(prefs: Preferences,
+         onHotkeyChange: @escaping @MainActor (Hotkey?) -> Bool = { _ in true },
+         onRecordingArmed: @escaping @MainActor (Bool) -> Void = { _ in },
+         onRetentionLowered: @escaping @MainActor () -> Void = {}) {
         self.prefs = prefs
+        self.onHotkeyChange = onHotkeyChange
+        self.onRecordingArmed = onRecordingArmed
         self.onRetentionLowered = onRetentionLowered
         _maxItems = State(initialValue: prefs.maxItems)
         _maxAgeDays = State(initialValue: prefs.maxAgeDays)
         _limitsItems = State(initialValue: prefs.limitsItems)
         _limitsAge = State(initialValue: prefs.limitsAge)
         _blocklistText = State(initialValue: prefs.blocklist.joined(separator: "\n"))
+        _shortcutState = State(initialValue: ShortcutState(hotkey: prefs.hotkey))
     }
 
     var body: some View {
         Form {
             startup
+            shortcut
             history
             ignoredApps
             permissions
@@ -165,6 +188,59 @@ struct PreferencesView: View {
             loginError = nil
         } catch {
             loginError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Shortcut
+
+    /// Placed second, ahead of retention: it is the setting people come here to
+    /// change, and the two retention numbers are set once.
+    private var shortcut: some View {
+        Section("Shortcut") {
+            LabeledContent("Open panel") {
+                HotkeyRecorder(hotkey: shortcutState.hotkey,
+                               onArmedChange: onRecordingArmed,
+                               onRecording: record)
+            }
+            if let refusal = shortcutState.refusal {
+                notice("exclamationmark.triangle.fill", .orange, refusalText(refusal))
+            }
+            if shortcutState.hotkey != Hotkey.default {
+                // The way back for someone who recorded something they cannot
+                // reach. Without it that is a `defaults delete`, which is not a
+                // thing to ask of anyone.
+                HStack(spacing: 0) {
+                    Button("Reset to ⌘⇧V") { record(.recorded(.default)) }
+                        .controlSize(.small)
+                    Spacer(minLength: 0)
+                }
+            }
+            caption("Opens Corvo from any app. Needs ⌘, ⌥ or ⌃.")
+        }
+    }
+
+    /// Written the moment it is typed, unlike the retention numbers below.
+    ///
+    /// They defer because "5" on the way to "500" is a limit that would delete
+    /// almost everything. A shortcut has no such half-state: `⌘⇧` on the way to
+    /// `⌘⇧V` is not something `HotkeyRule` would let through, and the recorder
+    /// only reports a whole key press.
+    private func record(_ recording: HotkeyRecording) {
+        shortcutState = ShortcutEditor.apply(recording, to: shortcutState,
+                                             register: onHotkeyChange)
+    }
+
+    /// The only part of the refusal that belongs to the screen: its wording.
+    private func refusalText(_ refusal: ShortcutRefusal) -> Text {
+        switch refusal {
+        case .needsModifier(let hotkey):
+            Text("\(hotkey.display) needs ⌘, ⌥ or ⌃ — otherwise it would be swallowed everywhere.")
+        case .inUse(let hotkey, let current):
+            if let current {
+                Text("\(hotkey.display) is in use by another app. Still using \(current.display).")
+            } else {
+                Text("\(hotkey.display) is in use by another app. Still no shortcut.")
+            }
         }
     }
 
