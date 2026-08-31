@@ -1,50 +1,31 @@
 import SwiftUI
 
-/// Sources and tags. Every row is a toggle: clicking the active one clears the
-/// filter, so the active row is filled rather than merely bolded — "on" has to be
-/// legible at a glance for clicking it again to make sense.
+/// The apps anything was ever copied from. Every row is a toggle: clicking the
+/// active one clears the filter, so the active row is filled rather than merely
+/// bolded — "on" has to be legible at a glance for clicking it again to make
+/// sense.
+///
+/// Tags used to live below this list and no longer do: see `HistoryView.tagStrip`
+/// for why a column that grows on its own is a bad neighbour for one that does
+/// not.
 struct FilterSidebar: View {
     @Bindable var model: HistoryModel
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if !model.sources.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        sectionTitle("Sources")
-                        ForEach(model.sources) { source in
-                            FilterRow(isOn: model.selectedSource == source.bundleId) {
-                                model.selectedSource = model.selectedSource == source.bundleId
-                                    ? nil : source.bundleId
-                            } label: {
-                                AppIcon.view(forBundleId: source.bundleId)
-                                Text(source.name).lineLimit(1)
-                                Spacer(minLength: 4)
-                                Text(source.count, format: .number)
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-
-                // Unlike Sources, this section stays put when it is empty: it
-                // carries the only way into the tag manager, and a user with no
-                // tags yet is exactly who needs to find it.
-                VStack(alignment: .leading, spacing: 2) {
-                    tagsHeader
-                    ForEach(model.tags) { tag in
-                        FilterRow(isOn: model.selectedTag == tag.id) {
-                            model.selectedTag = model.selectedTag == tag.id ? nil : tag.id
-                        } label: {
-                            // The glyph carries the rule, the colour carries the
-                            // tag's own colour — neither depends on the other.
-                            Image(systemName: tag.rule.isActive ? "bolt.fill" : "tag.fill")
-                                .frame(width: 16)
-                                .foregroundStyle(TagColor.named(tag.color)?.color ?? .secondary)
-                            Text(tag.name).lineLimit(1)
-                            Spacer(minLength: 0)
-                        }
+            VStack(alignment: .leading, spacing: 2) {
+                sectionTitle("Sources")
+                ForEach(model.sources) { source in
+                    FilterRow(isOn: model.selectedSource == source.bundleId) {
+                        model.selectedSource = model.selectedSource == source.bundleId
+                            ? nil : source.bundleId
+                    } label: {
+                        AppIcon.view(forBundleId: source.bundleId)
+                        Text(source.name).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(source.count, format: .number)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -53,25 +34,6 @@ struct FilterSidebar: View {
         }
         .scrollIndicators(.never)
         .frame(width: 190)
-    }
-
-    private var tagsHeader: some View {
-        HStack(spacing: 4) {
-            sectionTitle("Tags")
-            Spacer(minLength: 0)
-            Button { model.sheet = .tags } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.caption)
-                    .frame(width: 18, height: 16)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Edit tags and rules (⌘⇧T)")
-            .accessibilityLabel("Edit tags and rules")
-            .padding(.trailing, 6)
-            .padding(.bottom, 3)
-        }
     }
 
     private func sectionTitle(_ key: LocalizedStringKey) -> some View {

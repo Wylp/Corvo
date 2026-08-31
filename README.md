@@ -118,7 +118,8 @@ A rule is a regular expression, a source app, or both together. With both, they
 must both match.
 
 Tagged clippings are also **exempt from retention**: they never expire and do
-not count towards the history limit. Tagging is how you say "keep this".
+not count towards the history limit. So are clippings you have named with `⌘R`.
+Tagging or naming is how you say "keep this".
 
 ### Worked example: naming your Claude Code sessions
 
@@ -227,7 +228,7 @@ switching it back on restores what you chose — and because turning a rule on c
 delete a lot at once, Corvo asks first. With both off nothing is ever deleted and
 the history grows until you delete clippings yourself.
 
-Pinned and tagged clippings are exempt from all of it.
+Pinned, tagged and named clippings are exempt from all of it.
 
 ## Not yet
 

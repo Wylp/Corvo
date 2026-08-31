@@ -85,14 +85,19 @@ final class ItemRepository {
         }
 
         var conditions: [String] = []
-        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !query.isEmpty {
-            // ponytail: LIKE with a scan. See the index comment in AppDatabase.
+        // One condition per word, joined with AND, rather than one match on the
+        // whole line. Matching the line means the words have to appear together
+        // and in the order they were typed, which is not how a search box is
+        // used: "g cloud" found nothing in a history that had `gcloud auth
+        // login` in it, because the space the user put in was being required of
+        // the text as well. Split, each word only has to be in there somewhere,
+        // and typing another word narrows rather than starts over.
+        //
+        // ponytail: LIKE with a scan. See the index comment in AppDatabase.
+        for word in text.split(whereSeparator: \.isWhitespace) {
             conditions.append(
                 "(item.text LIKE ? OR item.sourceName LIKE ? OR item.label LIKE ?)")
-            args.append("%\(query)%")
-            args.append("%\(query)%")
-            args.append("%\(query)%")
+            args.append(contentsOf: repeatElement("%\(word)%", count: 3))
         }
         if let sourceBundleId {
             conditions.append("item.sourceBundleId = ?")
@@ -130,6 +135,21 @@ final class ItemRepository {
     func allTags() throws -> [Tag] {
         try dbQueue.read { db in
             try Tag.order(Tag.Columns.name).fetchAll(db)
+        }
+    }
+
+    /// How many clippings carry each tag, by tag id. A tag on nothing is absent
+    /// rather than zero — the one caller sorts by this and reads a missing key
+    /// as none, so a row per unused tag would be work for no answer.
+    ///
+    /// ponytail: count, not recency. Ordering by "the tag you reached for last"
+    /// would be the better answer and it cannot be had from here: `itemTag` is
+    /// two foreign keys and no timestamp, so there is nothing recording *when* a
+    /// clipping was tagged. That is a migration, not a query.
+    func tagUsage() throws -> [Int64: Int] {
+        try dbQueue.read { db in
+            try Row.fetchAll(db, sql: "SELECT tagId, COUNT(*) AS n FROM itemTag GROUP BY tagId")
+                .reduce(into: [:]) { counts, row in counts[row["tagId"]] = row["n"] }
         }
     }
 
