@@ -170,6 +170,50 @@ private final class StubRegistrar: HotkeyRegistering {
     #expect(registrar.registered == cmdShiftV)
 }
 
+/// The refused rebind unregisters before it fails, so the shortcut is down when
+/// the previous one is put back — and that restore can be refused too, by an app
+/// that took the combination while the recorder was open. Dropping its answer is
+/// what let the row say "Still using ⌃⌥C" over a shortcut nothing was listening
+/// for.
+@Test @MainActor func aRestoreThatIsAlsoRefusedIsNotReportedAsStillWorking() {
+    let registrar = StubRegistrar()
+    let binder = HotkeyBinder(prefs: makePrefs(), registrar: registrar)
+    #expect(binder.isRegistered)
+
+    registrar.refuse = true
+    #expect(binder.apply(Hotkey(keyCode: UInt32(kVK_ANSI_J), modifiers: UInt32(cmdKey))) == false)
+
+    // The shortcut it names is not registered, and it says so.
+    #expect(binder.current == cmdShiftV)
+    #expect(binder.isRegistered == false)
+}
+
+/// The one combination the recorder exists to capture is the one already bound,
+/// so it comes down while armed — long enough for another app to take it.
+@Test @MainActor func aShortcutLostWhileTheRecorderWasArmedDoesNotComeBackSilently() {
+    let registrar = StubRegistrar()
+    let binder = HotkeyBinder(prefs: makePrefs(), registrar: registrar)
+
+    binder.suspend()
+    #expect(binder.isRegistered == false)
+
+    registrar.refuse = true
+    binder.resume()
+    #expect(binder.isRegistered == false)
+}
+
+/// A cleared shortcut is not a registered one. Unregistering succeeds, so the
+/// registrar answers `true` — which used to be read as "it is bound".
+@Test @MainActor func aClearedShortcutIsNotReportedAsRegisteredAtLaunch() {
+    let prefs = makePrefs()
+    prefs.hotkey = nil
+
+    let binder = HotkeyBinder(prefs: prefs, registrar: StubRegistrar())
+
+    #expect(binder.current == nil)
+    #expect(binder.isRegistered == false)
+}
+
 @Test @MainActor func clearingUnregistersWithoutRefusing() {
     let prefs = makePrefs()
     let registrar = StubRegistrar()

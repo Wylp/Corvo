@@ -9,9 +9,9 @@ final class HistoryModel {
     private let tagger: AutoTagger
     private var observationCancellable: AnyDatabaseCancellable?
 
-    var query: String = "" { didSet { reload() } }
-    var selectedSource: String? { didSet { reload() } }
-    var selectedTag: Int64? { didSet { reload() } }
+    var query: String = "" { didSet { reloadItems() } }
+    var selectedSource: String? { didSet { reloadItems() } }
+    var selectedTag: Int64? { didSet { reloadItems() } }
     /// The one sheet the panel can have up, or `nil` for none. Lives on the
     /// model rather than in a view so that the sidebar's button and the panel's
     /// ⌘⇧T open the same thing — and so that hiding the panel can clear it.
@@ -64,6 +64,8 @@ final class HistoryModel {
     /// shifts every index by one. An index anchor would then span the wrong
     /// cards on the next ⇧-press.
     private var anchorId: Int64?
+    /// The tags of everything in `items`, rebuilt with the list.
+    private var tagsByItem: [Int64: [Tag]] = [:]
 
     /// What ⏎ and ⌘C act on: the run in list order, or the cursor's clipping
     /// when there is no run. List order rather than the order the user extended
@@ -83,9 +85,11 @@ final class HistoryModel {
         reload()
     }
 
+    /// Everything the screen shows: the list, and the two sidebars beside it.
+    ///
+    /// Called when something may have changed anywhere — a capture, a delete, a
+    /// tag write, launch.
     func reload() {
-        items = (try? repo.search(text: query, sourceBundleId: selectedSource,
-                                  tagId: selectedTag, limit: 200)) ?? []
         sources = (try? repo.sources()) ?? []
         tags = (try? repo.allTags()) ?? []
         // Through `attempt` like every other write on this screen, and not a
@@ -94,6 +98,25 @@ final class HistoryModel {
         // change exists to provide, alphabetically instead of by use, with
         // nothing anywhere saying why.
         tagUsage = Self.attempt("tagUsage") { try repo.tagUsage() } ?? [:]
+        reloadItems()
+    }
+
+    /// The list alone, for a change that moved only the list.
+    ///
+    /// `sources`, `tags` and `tagUsage` describe the whole history and not the
+    /// filtered view of it — none of the three reads `query`, `selectedSource`
+    /// or `selectedTag` — so a filter change cannot move them. Running them
+    /// anyway is what made one keystroke in the search field four statements
+    /// instead of two, on the main thread, per character.
+    func reloadItems() {
+        items = (try? repo.search(text: query, sourceBundleId: selectedSource,
+                                  tagId: selectedTag, limit: 200)) ?? []
+        // One statement for the whole list, rather than one per card at draw
+        // time. Same `attempt` as `tagUsage` and for the same reason: an empty
+        // map is not a crash, it is every card quietly losing its tags.
+        tagsByItem = Self.attempt("tagsByItem") {
+            try repo.tags(forItems: items.compactMap(\.id))
+        } ?? [:]
         selectedIndex = min(selectedIndex, max(items.count - 1, 0))
         if items.isEmpty { selectedIndex = 0 }
         // A run survives the poller, but only for clippings still in the list: a
@@ -263,9 +286,15 @@ final class HistoryModel {
         (0..<numberedCards).contains(index) ? index + 1 : nil
     }
 
+    /// The tags on a clipping, read from the map `reload` built.
+    ///
+    /// This is called from the body of every card the carousel builds, so it has
+    /// to be a lookup and not a query: it used to ask the database per card,
+    /// which made the query count a function of how many cards were on screen
+    /// and put it on the main thread during a scroll.
     func tags(for item: ClipItem) -> [Tag] {
         guard let id = item.id else { return [] }
-        return (try? repo.tags(forItem: id)) ?? []
+        return tagsByItem[id] ?? []
     }
 
     // MARK: - Walking the filters

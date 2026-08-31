@@ -122,9 +122,12 @@ final class CatcherView: NSView {
         case kVK_Escape:
             onResult?(.cancelled)
         case kVK_Delete, kVK_ForwardDelete:
-            // Neither could be recorded anyway — both fail the modifier rule —
-            // so spending them on "no shortcut" costs nothing and gives the
-            // gesture the shape it has everywhere else in macOS.
+            // ⌫ is how "no shortcut" is spelled everywhere else in macOS, so it
+            // is spent on that here. Not free, though the comment used to say so:
+            // bare ⌫ and bare Esc do fail the modifier rule, but ⌘⌫, ⌥⌫, ⌃⌫ and
+            // ⌃⎋ would all pass it, and this is read before the modifiers are
+            // looked at. Those combinations cannot be bound, and that is the
+            // price of the gesture rather than a consequence of the rule.
             onResult?(.cleared)
         default:
             onResult?(.recorded(Hotkey(event: event)))

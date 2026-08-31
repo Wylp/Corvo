@@ -105,9 +105,14 @@ final class HotkeyBinder {
     @ObservationIgnored private let prefs: Preferences
     @ObservationIgnored private let registrar: HotkeyRegistering
 
-    /// Registers whatever was stored, right away. `isRegistered` is false when
-    /// another application already holds it — there is nothing to do about that
-    /// here, but the caller has something to log.
+    /// Whether a global shortcut is registered *right now*.
+    ///
+    /// One meaning, kept true on every path: false when the system refused the
+    /// binding, false when the user cleared it, and false while the recorder has
+    /// it suspended. It used to answer `true` for a cleared shortcut, because
+    /// unregistering succeeds, and to stay `true` through a suspend — so the one
+    /// value offered to the UI was wrong in the two states a screen would most
+    /// want to show.
     private(set) var isRegistered: Bool
 
     init(prefs: Preferences, registrar: HotkeyRegistering) {
@@ -115,7 +120,7 @@ final class HotkeyBinder {
         self.registrar = registrar
         let stored = prefs.hotkey
         self.current = stored
-        self.isRegistered = registrar.rebind(to: stored)
+        self.isRegistered = registrar.rebind(to: stored) && stored != nil
     }
 
     /// Registers first, stores second.
@@ -129,7 +134,14 @@ final class HotkeyBinder {
     /// - Returns: `false` when the system refused, and nothing changed.
     func apply(_ hotkey: Hotkey?) -> Bool {
         guard registrar.rebind(to: hotkey) else {
-            _ = registrar.rebind(to: current)
+            // The refused rebind already unregistered the old shortcut before
+            // it failed, so at this point nothing is bound and putting the
+            // previous one back can itself be refused — another app can have
+            // taken it in the meantime. Dropping that answer is what let the
+            // row go on saying "Still using ⌃⌥C" over a shortcut that was no
+            // longer registered, which is the exact sentence this policy exists
+            // to keep true.
+            isRegistered = registrar.rebind(to: current) && current != nil
             return false
         }
         prefs.hotkey = hotkey
@@ -144,8 +156,16 @@ final class HotkeyBinder {
     /// handling, so without this the one combination the user cannot record is
     /// the one currently bound: pressing it would open the panel over the
     /// settings window instead of landing in the recorder.
-    func suspend() { _ = registrar.rebind(to: nil) }
+    func suspend() {
+        _ = registrar.rebind(to: nil)
+        isRegistered = false
+    }
 
     /// Puts the live shortcut back when recording ends, however it ended.
-    func resume() { _ = registrar.rebind(to: current) }
+    ///
+    /// The answer is kept rather than dropped: the shortcut was down for as long
+    /// as the recorder was armed, which is long enough for another application
+    /// to have claimed it. Reporting success then would leave `isRegistered`
+    /// describing a shortcut nothing is listening for.
+    func resume() { isRegistered = registrar.rebind(to: current) && current != nil }
 }
