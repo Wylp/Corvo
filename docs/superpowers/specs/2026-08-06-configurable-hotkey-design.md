@@ -182,8 +182,9 @@ Three overrides carry it:
   `⌃⌥` before the letter lands.
 - **`keyDown`** completes the recording.
 
-`Esc` cancels and `⌫` clears the binding. Neither is recordable as a result
-anyway, both failing the modifier guardrail.
+`Esc` cancels and `⌫` clears the binding. Both are read before the modifiers
+are: bare, neither passes the modifier guardrail, but `⌘⌫`, `⌥⌫`, `⌃⌫` and
+`⌃⎋` would, and they are given up to keep the gesture macOS already has.
 
 States: **idle** — the current combo, or "None"; **armed** — "Type a shortcut…";
 **rejected** — the old value, plus the reason.
