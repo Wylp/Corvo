@@ -20,6 +20,18 @@ import UniformTypeIdentifiers
 struct PreferencesView: View {
     let prefs: Preferences
 
+    /// Registers the shortcut and reports what the system said. `false` means it
+    /// was refused and nothing changed — this is the only setting in the window
+    /// that can be turned down by something outside the app.
+    let onHotkeyChange: @MainActor (Hotkey?) -> Bool
+
+    /// Called when the recorder arms and disarms, so the live shortcut can come
+    /// down while it is armed. Without it the one combination the user cannot
+    /// record is the one already bound: a Carbon global shortcut is dispatched
+    /// ahead of the app's own key handling, so pressing it would open the panel
+    /// over this window instead of landing in the recorder.
+    let onRecordingArmed: @MainActor (Bool) -> Void
+
     /// Runs the prune. Called once the user has confirmed a lower limit, so the
     /// deletion they were warned about happens while they are still looking at
     /// the screen that caused it. Deferring it to the hourly timer would not
@@ -32,6 +44,10 @@ struct PreferencesView: View {
     /// everything. Nothing reaches `prefs` until the field is submitted or left.
     @State private var maxItems: Int
     @State private var maxAgeDays: Int
+    /// The two switches, drafts like the numbers beside them. A rule switched on is
+    /// a cut and has to reach the confirmation before it reaches `prefs`.
+    @State private var limitsItems: Bool
+    @State private var limitsAge: Bool
     @State private var blocklistText: String
     @State private var loginError: String?
     @State private var isConfirmingCut = false
@@ -39,21 +55,34 @@ struct PreferencesView: View {
     /// this in another application. Recomputing the body also re-reads
     /// `LoginItem`, which the user can change in the same trip.
     @State private var hasAccessibility = Paster.hasPermission
+    /// The shortcut row: what it shows, and why the last attempt did not take.
+    /// Seeded from `prefs` and moved only by `ShortcutEditor`, which is where the
+    /// rule about refused shortcuts lives and where it is tested.
+    @State private var shortcutState: ShortcutState
     @FocusState private var focus: Field?
 
     private enum Field { case items, days }
 
-    init(prefs: Preferences, onRetentionLowered: @escaping @MainActor () -> Void = {}) {
+    init(prefs: Preferences,
+         onHotkeyChange: @escaping @MainActor (Hotkey?) -> Bool = { _ in true },
+         onRecordingArmed: @escaping @MainActor (Bool) -> Void = { _ in },
+         onRetentionLowered: @escaping @MainActor () -> Void = {}) {
         self.prefs = prefs
+        self.onHotkeyChange = onHotkeyChange
+        self.onRecordingArmed = onRecordingArmed
         self.onRetentionLowered = onRetentionLowered
         _maxItems = State(initialValue: prefs.maxItems)
         _maxAgeDays = State(initialValue: prefs.maxAgeDays)
+        _limitsItems = State(initialValue: prefs.limitsItems)
+        _limitsAge = State(initialValue: prefs.limitsAge)
         _blocklistText = State(initialValue: prefs.blocklist.joined(separator: "\n"))
+        _shortcutState = State(initialValue: ShortcutState(hotkey: prefs.hotkey))
     }
 
     var body: some View {
         Form {
             startup
+            shortcut
             history
             ignoredApps
             permissions
@@ -84,10 +113,38 @@ struct PreferencesView: View {
                 .keyboardShortcut(.defaultAction)
             Button("Delete", role: .destructive) { applyCut() }
         } message: {
+            cutMessage
+        }
+    }
+
+    /// Names the rules that will actually apply, which is now three sentences
+    /// rather than one.
+    ///
+    /// The old message named both rules unconditionally. With a rule switched off
+    /// that would describe a deletion that is not going to happen — and the number
+    /// it quoted would be one the user can see is dimmed on the screen behind the
+    /// alert.
+    ///
+    /// Both-off never gets here: nothing is being cut, so `commitRetention` writes
+    /// it without asking.
+    @ViewBuilder private var cutMessage: some View {
+        if limitsItems, limitsAge {
             Text("""
                 Corvo will keep the newest ^[\(maxItems) clipping](inflect: true) \
                 and delete anything older than ^[\(maxAgeDays) day](inflect: true). \
                 Pinned and tagged clippings are never deleted. Corvo has no undo.
+                """)
+        } else if limitsItems {
+            Text("""
+                Corvo will keep the newest ^[\(maxItems) clipping](inflect: true), \
+                whatever their age. Pinned and tagged clippings are never deleted. \
+                Corvo has no undo.
+                """)
+        } else {
+            Text("""
+                Corvo will delete anything older than \
+                ^[\(maxAgeDays) day](inflect: true), however few are left. Pinned \
+                and tagged clippings are never deleted. Corvo has no undo.
                 """)
         }
     }
@@ -134,19 +191,103 @@ struct PreferencesView: View {
         }
     }
 
+    // MARK: - Shortcut
+
+    /// Placed second, ahead of retention: it is the setting people come here to
+    /// change, and the two retention numbers are set once.
+    private var shortcut: some View {
+        Section("Shortcut") {
+            LabeledContent("Open panel") {
+                HotkeyRecorder(hotkey: shortcutState.hotkey,
+                               onArmedChange: onRecordingArmed,
+                               onRecording: record)
+            }
+            if let refusal = shortcutState.refusal {
+                notice("exclamationmark.triangle.fill", .orange, refusalText(refusal))
+            }
+            if shortcutState.hotkey != Hotkey.default {
+                // The way back for someone who recorded something they cannot
+                // reach. Without it that is a `defaults delete`, which is not a
+                // thing to ask of anyone.
+                HStack(spacing: 0) {
+                    Button("Reset to ⌘⇧V") { record(.recorded(.default)) }
+                        .controlSize(.small)
+                    Spacer(minLength: 0)
+                }
+            }
+            caption("Opens Corvo from any app. Needs ⌘, ⌥ or ⌃.")
+        }
+    }
+
+    /// Written the moment it is typed, unlike the retention numbers below.
+    ///
+    /// They defer because "5" on the way to "500" is a limit that would delete
+    /// almost everything. A shortcut has no such half-state: `⌘⇧` on the way to
+    /// `⌘⇧V` is not something `HotkeyRule` would let through, and the recorder
+    /// only reports a whole key press.
+    private func record(_ recording: HotkeyRecording) {
+        shortcutState = ShortcutEditor.apply(recording, to: shortcutState,
+                                             register: onHotkeyChange)
+    }
+
+    /// The only part of the refusal that belongs to the screen: its wording.
+    private func refusalText(_ refusal: ShortcutRefusal) -> Text {
+        switch refusal {
+        case .needsModifier(let hotkey):
+            Text("\(hotkey.display) needs ⌘, ⌥ or ⌃ — otherwise it would be swallowed everywhere.")
+        case .inUse(let hotkey, let current):
+            if let current {
+                Text("\(hotkey.display) is in use by another app. Still using \(current.display).")
+            } else {
+                Text("\(hotkey.display) is in use by another app. Still no shortcut.")
+            }
+        }
+    }
+
     // MARK: - History
 
     private var history: some View {
         Section("History") {
-            LabeledContent("Keep at most") {
-                numberField("Keep at most", value: $maxItems, field: .items)
-                Text("clippings").foregroundStyle(.secondary)
+            rule("Keep at most", isOn: $limitsItems, value: $maxItems,
+                 field: .items, unit: "clippings")
+            rule("Delete after", isOn: $limitsAge, value: $maxAgeDays,
+                 field: .days, unit: "days")
+
+            if limitsItems || limitsAge {
+                caption("Pinned or tagged clippings never expire, and do not count towards the limit.")
+            } else {
+                // Not a warning glyph: nothing is wrong. It is a consequence, and
+                // the user chose it — they are entitled to a clipboard that keeps
+                // everything, and entitled to know that is what they now have.
+                caption("Nothing is ever deleted. The history grows until you delete clippings yourself.")
             }
-            LabeledContent("Delete after") {
-                numberField("Delete after", value: $maxAgeDays, field: .days)
-                Text("days").foregroundStyle(.secondary)
+        }
+    }
+
+    /// One retention rule: a switch, a number, and the unit the number is in.
+    ///
+    /// The number stays on screen when the rule is off, dimmed and not editable.
+    /// Emptying the field instead would throw away the value the user picked, and
+    /// it is exactly the value that comes back when they switch the rule on again.
+    private func rule(_ label: LocalizedStringKey, isOn: Binding<Bool>,
+                      value: Binding<Int>, field: Field,
+                      unit: LocalizedStringKey) -> some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                numberField(label, value: value, field: field)
+                    .disabled(!isOn.wrappedValue)
+                Text(unit)
+                    .foregroundStyle(.secondary)
+                Toggle(label, isOn: isOn)
+                    .labelsHidden()
+                    // Committed the moment it moves, unlike the number beside it: a
+                    // switch has no half-typed state to protect, and leaving it
+                    // uncommitted would mean the confirmation for switching a rule
+                    // on could arrive long after the click that asked for it.
+                    .onChange(of: isOn.wrappedValue) { _, _ in commitRetention() }
             }
-            caption("Pinned or tagged clippings never expire, and do not count towards the limit.")
+        } label: {
+            Text(label).foregroundStyle(isOn.wrappedValue ? .primary : .secondary)
         }
     }
 
@@ -270,16 +411,31 @@ struct PreferencesView: View {
     private func commitRetention() {
         maxItems = Preferences.clamped(maxItems, to: Preferences.itemLimits)
         maxAgeDays = Preferences.clamped(maxAgeDays, to: Preferences.ageLimits)
-        guard maxItems < prefs.maxItems || maxAgeDays < prefs.maxAgeDays else {
+        guard RetentionEdit.isCut(from: storedRetention, to: draftRetention) else {
             writeRetention()
             return
         }
         isConfirmingCut = true
     }
 
+    /// What is being enforced right now.
+    private var storedRetention: RetentionSettings {
+        RetentionSettings(maxItems: prefs.maxItems, maxAgeDays: prefs.maxAgeDays,
+                          limitsItems: prefs.limitsItems, limitsAge: prefs.limitsAge)
+    }
+
+    /// What the screen is showing, which is not the same thing until it is
+    /// committed.
+    private var draftRetention: RetentionSettings {
+        RetentionSettings(maxItems: maxItems, maxAgeDays: maxAgeDays,
+                          limitsItems: limitsItems, limitsAge: limitsAge)
+    }
+
     private func writeRetention() {
         prefs.maxItems = maxItems
         prefs.maxAgeDays = maxAgeDays
+        prefs.limitsItems = limitsItems
+        prefs.limitsAge = limitsAge
     }
 
     private func applyCut() {
@@ -290,6 +446,8 @@ struct PreferencesView: View {
     private func revertRetention() {
         maxItems = prefs.maxItems
         maxAgeDays = prefs.maxAgeDays
+        limitsItems = prefs.limitsItems
+        limitsAge = prefs.limitsAge
     }
 
     /// A window can be closed with a field still focused and the edit never
@@ -305,7 +463,9 @@ struct PreferencesView: View {
         // would present an unasked-for "Delete clippings now?" the next time
         // the window opens.
         isConfirmingCut = false
-        guard maxItems >= prefs.maxItems, maxAgeDays >= prefs.maxAgeDays else {
+        // The same question `commitRetention` asks, so a rule switched on and left
+        // unconfirmed is dropped exactly like a lowered number is.
+        guard !RetentionEdit.isCut(from: storedRetention, to: draftRetention) else {
             revertRetention()
             return
         }
@@ -314,7 +474,7 @@ struct PreferencesView: View {
         // "unset, falls back to `RetentionPolicy.standard`" into a pinned
         // `1000`/`30` that a future change to the standard policy can never
         // reach.
-        guard maxItems != prefs.maxItems || maxAgeDays != prefs.maxAgeDays else { return }
+        guard draftRetention != storedRetention else { return }
         writeRetention()
     }
 

@@ -21,6 +21,15 @@ final class PasteboardMonitor {
     /// every build without a notification centre behind it.
     var onNeedsName: ((Int64, Tag, String?) -> Void)?
 
+    /// A clipping was stored. Fires only for content that survived every guard
+    /// above and reached the database — not for a concealed marker, a blocklisted
+    /// app, or content nothing could be captured from.
+    ///
+    /// This is what lets a count ceiling behave like a ceiling: the item sweep
+    /// runs here rather than waiting for the hourly timer. `nil` wherever nothing
+    /// is listening, which is every test that is not about this.
+    var onDidCapture: (() -> Void)?
+
     private var lastChangeCount: Int
     private var timer: Timer?
 
@@ -110,6 +119,11 @@ final class PasteboardMonitor {
         } catch {
             NSLog("Corvo: auto-tagging failed: \(error)")
         }
+
+        // After the tagging, not before: a tag is what exempts a clipping from
+        // retention, so a ceiling enforced first could delete the very item a
+        // rule was about to protect.
+        onDidCapture?()
     }
 
     private func capture(types: Set<NSPasteboard.PasteboardType>) -> CapturedItem? {

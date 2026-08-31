@@ -481,8 +481,8 @@ final class HistoryModel {
     /// What the rule would claim right now. The editor's preview and the count
     /// the retroactive apply asks the user to confirm come from this one call,
     /// so the number shown is the set that gets tagged.
-    func items(matching rule: TagRule) -> [ClipItem] {
-        Self.attempt("items(matching:)") { try tagger.items(matching: rule) } ?? []
+    func items(matching rule: TagRule) -> AutoTagger.Matches {
+        Self.attempt("items(matching:)") { try tagger.items(matching: rule) } ?? .none
     }
 
     @discardableResult
