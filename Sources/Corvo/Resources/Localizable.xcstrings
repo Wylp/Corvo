@@ -1,6 +1,15 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ is in use by another app. Still no shortcut.": {
+      "comment": "Warning under the shortcut row when the system refused the combination and the user had already cleared the shortcut, so nothing is bound. %@ is the one they wanted."
+    },
+    "%@ is in use by another app. Still using %@.": {
+      "comment": "Warning under the shortcut row when the system refused the combination. First %@ is the one the user wanted, second %@ is the one still bound."
+    },
+    "%@ needs ⌘, ⌥ or ⌃ — otherwise it would be swallowed everywhere.": {
+      "comment": "Warning under the shortcut row when the user recorded a combination with no ⌘, ⌥ or ⌃. %@ is the combination they typed, which was never registered."
+    },
     "A tag named “%@” already exists.": {
       "comment": "Inline error in the tag editor when the name already belongs to another tag. %@ is the name the user typed."
     },
@@ -51,6 +60,9 @@
     },
     "Choose the app this rule should match.": {
       "comment": "Message shown inside the app panel opened from the tag editor."
+    },
+    "Click, then type the shortcut you want": {
+      "comment": "Tooltip of the shortcut recorder while it is idle."
     },
     "Close": {
       "comment": "Key-hint label for esc, which closes the panel."
@@ -171,6 +183,9 @@
     "No tags yet": {
       "comment": "Empty state of the tag list."
     },
+    "None": {
+      "comment": "Recorder button label when no global shortcut is bound. The user cleared it with ⌫, and the menu bar item is then the only way in."
+    },
     "Not a valid pattern. Check the brackets and escapes.": {
       "comment": "Status under the pattern field when the regular expression does not compile."
     },
@@ -199,6 +214,12 @@
     },
     "Open Settings": {
       "comment": "Alert button that opens System Settings at the Accessibility panel."
+    },
+    "Open panel": {
+      "comment": "Label of the row holding the shortcut recorder, in the Shortcut section."
+    },
+    "Opens Corvo from any app. Needs ⌘, ⌥ or ⌃.": {
+      "comment": "Caption under the shortcut row. The three glyphs are modifier keys and are not translated; ⇧ alone is refused because it is how a capital letter is typed."
     },
     "Orange": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
@@ -242,6 +263,9 @@
     "Registered, but switched off in System Settings.": {
       "comment": "Warning under the login toggle when macOS has the item registered but disabled."
     },
+    "Reset to ⌘⇧V": {
+      "comment": "Button that puts the shortcut back to the default. Shown only when the current binding is not the default. ⌘⇧V is the key combination itself and is not translated."
+    },
     "Sample of matching clippings": {
       "comment": "VoiceOver label of the three-line preview of what the pattern matches."
     },
@@ -256,6 +280,12 @@
     },
     "Settings…": {
       "comment": "Menu bar item that opens the Settings window."
+    },
+    "Shortcut": {
+      "comment": "Section title for the global shortcut that opens the panel."
+    },
+    "Shortcut for opening the panel": {
+      "comment": "Accessibility label of the shortcut recorder button."
     },
     "Show History": {
       "comment": "Menu bar item that opens the floating panel."
@@ -296,6 +326,12 @@
     },
     "Try another word, or clear the search.": {
       "comment": "Hint under the 'No matches' title."
+    },
+    "Type a shortcut, or press Escape to cancel": {
+      "comment": "Tooltip of the shortcut recorder while it is armed."
+    },
+    "Type a shortcut…": {
+      "comment": "Recorder button label while it is armed and no modifier is being held yet."
     },
     "Unavailable": {
       "comment": "Badge on a file card whose original file is no longer on disk."
