@@ -27,10 +27,9 @@ import Testing
     panel.hide()
 }
 
-/// The path the bug was reported on: the user clicks somewhere else and
-/// `hidesOnDeactivate` takes the panel away with no call of ours in it. AppKit
-/// posts this as it deactivates; clearing here is what stops the sheet from
-/// riding the automatic restore back onto the screen.
+/// The path the bug was reported on: the user clicks somewhere else and the
+/// panel goes away. AppKit posts this as it deactivates; clearing here is what
+/// stops the sheet from coming back onto the screen with the panel.
 @Test @MainActor func theAppResigningActiveClearsItToo() {
     var cleared = 0
     let panel = PanelController(content: Text(verbatim: "x")) { cleared += 1 }
@@ -127,5 +126,42 @@ private func settle() {
     // call of ours in it. The filter is not.
     #expect(cleared == 2)
     #expect(reset == 1)
+    panel.hide()
+}
+
+
+/// Resigning active takes the panel off the screen, and this asserts it because
+/// it is ours to do now.
+///
+/// `hidesOnDeactivate` used to. It was dropped because AppKit enforces it in the
+/// other direction too — a window carrying it is ordered straight back out if it
+/// is brought front while the app is inactive, which is exactly what `show()`
+/// does after `NSApp.activate(ignoringOtherApps:)`, an activation that does not
+/// land synchronously. Losing that race opened nothing and made the next press
+/// look like the one that worked: the "hotkey needs two presses" report.
+///
+/// The behaviour moved from AppKit, where nothing could ask it a question, into
+/// one line here — so there is something to fail if it is ever removed.
+@Test @MainActor func theAppResigningActiveTakesThePanelOffTheScreen() {
+    let panel = PanelController(content: Text(verbatim: "x"))
+    panel.show()
+    #expect(panel.isVisible)
+
+    NotificationCenter.default.post(name: NSApplication.didResignActiveNotification,
+                                    object: NSApp)
+
+    #expect(!panel.isVisible, "the panel stayed up after the app resigned active")
+}
+
+/// The half the race was about: bringing the panel front twice in a row leaves
+/// it up. With `hidesOnDeactivate` this held only while the app was active, and
+/// `show()` cannot promise that — `NSApp.activate(ignoringOtherApps:)` returns
+/// before the activation lands.
+@Test @MainActor func showingTwiceLeavesThePanelUp() {
+    let panel = PanelController(content: Text(verbatim: "x"))
+    panel.show()
+    #expect(panel.isVisible)
+    panel.show()
+    #expect(panel.isVisible, "the second opening put the panel away")
     panel.hide()
 }

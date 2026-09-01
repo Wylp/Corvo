@@ -50,16 +50,34 @@ final class PanelController {
         panel.hasShadow = true
         panel.isMovableByWindowBackground = true
         panel.level = .floating
-        panel.hidesOnDeactivate = true
+        // Deliberately NOT `hidesOnDeactivate`. The panel still goes away when
+        // the app resigns active — see the observer below — but it goes away
+        // because we say so, which is the whole point.
+        //
+        // AppKit enforces "a hidesOnDeactivate window is not on screen while its
+        // app is inactive" by ordering such a window straight back out, and
+        // `show()` orders this one front immediately after
+        // `NSApp.activate(ignoringOtherApps:)` — which does not activate
+        // synchronously. Lose that race and the press opens nothing, while the
+        // next press finds the app already active and works. That is the
+        // "sometimes I have to hit the hotkey twice" bug: the second half of the
+        // same sentence the observer below is about, AppKit moving this window
+        // with no call of ours in it.
+        //
+        // ponytail: our hide runs on `didResignActive`, which can be a frame
+        // later than AppKit's own. If switching apps ever shows the panel
+        // lingering, that is the cost — revert this line and put the orderFront
+        // behind the activation instead.
+        panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.contentView = NSHostingView(rootView: content)
 
-        // `hidesOnDeactivate` takes the window off the screen with no call of
-        // ours anywhere in it, and AppKit puts it back when the app is activated
-        // again — also without asking us. Clearing on the way out is what stops
-        // that pair from restoring a sheet over a window that can no longer
-        // dismiss it.
+        // The panel leaves the screen when the user goes somewhere else, and
+        // this is where that happens now — `hidesOnDeactivate` used to do it,
+        // along with restoring the window on the way back, both without a call
+        // of ours anywhere in them. Clearing here is also what stops a sheet
+        // coming back over a window that can no longer dismiss it.
         //
         // Not `didResignKey`, which is the tempting one: a sheet and the tag
         // editor's open panel both take key away from this window while it is
@@ -68,8 +86,11 @@ final class PanelController {
         // invisible" cannot be told from "is opening".
         deactivation = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification,
-            object: nil, queue: .main) { _ in
-                MainActor.assumeIsolated { clearTransientState() }
+            object: nil, queue: .main) { [weak panel] _ in
+                MainActor.assumeIsolated {
+                    clearTransientState()
+                    panel?.orderOut(nil)
+                }
             }
     }
 
