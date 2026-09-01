@@ -329,6 +329,12 @@
     "Search content or app…": {
       "comment": "Placeholder of the search field at the top of the panel."
     },
+    "Settings": {
+      "comment": "Accessibility label of the gear button in the panel's search row, which opens the Settings window."
+    },
+    "Settings (⌘,)": {
+      "comment": "Tooltip of the gear button in the panel's search row. ⌘, is the key combination and is not translated."
+    },
     "Settings…": {
       "comment": "Menu bar item that opens the Settings window."
     },

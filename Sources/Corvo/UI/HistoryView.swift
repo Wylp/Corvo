@@ -16,6 +16,10 @@ struct HistoryView: View {
     /// ⌘C: put the clipping on the clipboard and stop there. The other half of
     /// ⏎, for pasting somewhere Corvo cannot reach or at a moment it cannot pick.
     let onCopy: ([ClipItem]) -> Void
+    /// Opens Settings. The panel is the only surface left when the menu bar icon
+    /// is switched off — the ⌘, that opens Settings lives on the `MenuBarExtra`
+    /// menu, and that menu is exactly what disappears with the icon.
+    let onOpenSettings: () -> Void
 
     @State private var tagText = ""
     /// Which row of the tag sheet the keyboard is on, or `nil` for "still in the
@@ -71,6 +75,16 @@ struct HistoryView: View {
                 .font(.title3)
                 .focused($isSearchFocused)
                 .onSubmit { pasteSelected() }
+            // Sibling of the magnifying glass rather than a card-coloured
+            // control: this is chrome, and the cards are what the panel is for.
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Settings (⌘,)")
+            .accessibilityLabel("Settings")
         }
         .padding(.horizontal, 16)
         .frame(height: 48)
@@ -316,6 +330,11 @@ struct HistoryView: View {
             // an equivalent registered with ⌘ is ever asked about it.
             shortcutButton(.leftArrow, modifiers: .command) { model.moveTagFilter(-1) }
             shortcutButton(.rightArrow, modifiers: .command) { model.moveTagFilter(1) }
+            // The way to Settings that survives the menu bar icon being switched
+            // off, which is what takes the `MenuBarExtra` menu — and its own ⌘,
+            // — away. Registered here as well as there, both reaching the same
+            // `showSettings()`, so there is no second path to keep in step.
+            shortcutButton(",", modifiers: .command) { onOpenSettings() }
             shortcutButton(.return) { pasteSelected() }
             // Wins over the search field's own ⌘C: a shortcut registered on the
             // window's views is consulted before the menu item the field relies

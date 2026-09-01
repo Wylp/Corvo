@@ -98,6 +98,7 @@ so you never have to remember this table.
 | `⌘⇧T` | Open the tag manager |
 | `⌘P` | Pin / unpin |
 | `⌘⌫` | Delete the clipping |
+| `⌘,` | Settings — the gear in the search row does the same |
 | `Esc` | Close the panel |
 
 Hold `⇧` and click to take several clippings at once, from the last one you

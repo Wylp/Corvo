@@ -111,7 +111,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     model: model,
                     blobs: env.blobs,
                     onPaste: { [weak self] items in self?.paste(items) },
-                    onCopy: { [weak self] items in self?.copy(items) }
+                    onCopy: { [weak self] items in self?.copy(items) },
+                    // Hidden first, and not left to `hidesOnDeactivate`:
+                    // `SettingsWindow.show()` activates this app rather than
+                    // another one, so nothing deactivates and the panel would
+                    // stay floating over the window it just opened.
+                    onOpenSettings: { [weak self] in
+                        self?.panel?.hide()
+                        self?.showSettings()
+                    }
                 ),
                 // The panel is hidden, not destroyed, so nothing else would ever
                 // put the sheet away: it would be back on top the next time the
