@@ -89,7 +89,12 @@ import Testing
 // MARK: - Posting real key events
 
 @MainActor
-private final class PasteBox { var pasted: [ClipItem] = [] }
+private final class PasteBox {
+    var pasted: [ClipItem] = []
+    /// ⌘, asked for Settings. A count and not a flag, so a shortcut that fires
+    /// twice for one press is not read as working.
+    var settingsOpened = 0
+}
 
 @MainActor
 private func panelUnderTest() throws -> (HistoryModel, NSPanel, BlobStore, URL, PasteBox) {
@@ -117,7 +122,8 @@ private func panelUnderTest() throws -> (HistoryModel, NSPanel, BlobStore, URL, 
                          styleMask: [.nonactivatingPanel], backing: .buffered, defer: false)
     window.contentView = NSHostingView(rootView: HistoryView(
         model: model, blobs: blobs,
-        onPaste: { box.pasted = $0 }, onCopy: { _ in }))
+        onPaste: { box.pasted = $0 }, onCopy: { _ in },
+        onOpenSettings: { box.settingsOpened += 1 }))
     window.makeKeyAndOrderFront(nil)
     settle()
     return (model, window, blobs, dir, box)
@@ -131,7 +137,17 @@ private enum Key {
         switch self {
         case .leftArrow: return 123
         case .rightArrow: return 124
-        case .character(let c): return c == "1" ? 18 : 19
+        // kVK_ANSI_*. A wrong code is a press that lands on another key, so
+        // these are named rather than derived.
+        case .character(let c):
+            switch c {
+            case "1": return 18
+            case "2": return 19
+            case ",": return 43
+            default:
+                Issue.record("no keyCode for \(c) — add it")
+                return 0
+            }
         }
     }
 
@@ -165,4 +181,29 @@ private func press(_ key: Key, modifiers: NSEvent.ModifierFlags = [], in window:
 @MainActor
 private func settle() {
     RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+}
+
+
+/// ⌘, has to reach the panel, because the panel is the only surface left once
+/// the menu bar icon is switched off — and switching it off is what takes the
+/// `MenuBarExtra` menu, and the ⌘, on it, away.
+///
+/// Posted as a real event for the reason this file exists: ⌘ makes a press a key
+/// equivalent, and a shortcut that is never offered one compiles, reads
+/// correctly, and does nothing. That shipped here once already.
+@Test @MainActor func commandCommaReachesSettingsFromThePanel() throws {
+    let (model, window, blobs, dir, box) = try panelUnderTest()
+    defer { window.orderOut(nil); try? FileManager.default.removeItem(at: dir) }
+    _ = blobs
+
+    #expect(box.settingsOpened == 0)
+
+    press(.character(","), modifiers: .command, in: window)
+    #expect(box.settingsOpened == 1, "⌘, never reached the panel")
+
+    // The search field holds focus and a comma is an ordinary character in it,
+    // so the bare key must stay the field's: only the ⌘ form is ours.
+    press(.character(","), in: window)
+    #expect(box.settingsOpened == 1, "a bare comma should type, not open Settings")
+    #expect(model.query.contains(","))
 }

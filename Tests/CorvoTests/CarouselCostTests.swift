@@ -48,7 +48,8 @@ import Testing
     let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 900, height: 420),
                          styleMask: [.nonactivatingPanel], backing: .buffered, defer: false)
     window.contentView = NSHostingView(rootView: HistoryView(
-        model: model, blobs: blobs, onPaste: { _ in }, onCopy: { _ in }))
+        model: model, blobs: blobs, onPaste: { _ in }, onCopy: { _ in },
+        onOpenSettings: {}))
     defer { window.orderOut(nil) }
     window.makeKeyAndOrderFront(nil)
     settleCarousel()
