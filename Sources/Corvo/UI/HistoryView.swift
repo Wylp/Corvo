@@ -434,7 +434,11 @@ struct HistoryView: View {
     /// should not require remembering how it was spelled.
     private var tagSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Add a tag").font(.headline)
+            // Names what it acts on. ⌘T reaches the whole selection, and a
+            // headline that said "Add a tag" over five selected clippings was
+            // the sheet keeping the most important thing about itself to
+            // itself.
+            Text(tagSheetTitle).font(.headline)
             TextField("Tag name", text: $tagText)
                 .onSubmit { confirmTag() }
                 // On the field, which is what holds focus while this sheet is
@@ -460,6 +464,31 @@ struct HistoryView: View {
         .frame(width: 300)
     }
 
+    /// "this clipping" over one, the count over more.
+    ///
+    /// Two strings rather than one with `^[…](inflect: true)`, and not only
+    /// because "Tag 1 clipping" is what a program says. The branch is on
+    /// `count > 1`, so the other side is plural for every number that can reach
+    /// it and needs no agreement engine to say so — which matters here, because
+    /// this app's `inflect:` markup does not currently work: `Text` strips it
+    /// and leaves the singular ("Tag 3 clipping"), and `String(localized:)`
+    /// leaks it raw. Seven strings written before this one have the same
+    /// problem and are not this change's to fix.
+    private var tagSheetTitle: LocalizedStringKey {
+        let count = model.selectedItems.count
+        guard count > 1 else { return "Tag this clipping" }
+        return "Tag \(count) clippings"
+    }
+
+    /// The one label with something to explain rather than to name: a tag on
+    /// three of five selected clippings is not here, and nothing else on the
+    /// sheet would ever say so. Split for the reason `tagSheetTitle` is.
+    private var carriedLabel: LocalizedStringKey {
+        let count = model.selectedItems.count
+        guard count > 1 else { return "On this clipping" }
+        return "On all \(count) clippings"
+    }
+
     /// What this clipping already carries, each row a way to take it back off.
     ///
     /// It belongs on this sheet and not only in the tag manager, because
@@ -478,24 +507,54 @@ struct HistoryView: View {
         let onAll = model.tagsOnAll(model.selectedItems)
         let carried = model.tags.filter { onAll.contains($0.name) }
         if !carried.isEmpty {
-            VStack(spacing: 0) {
-                ForEach(carried) { tag in
-                    HStack(spacing: 0) {
-                        tagChoiceRow(tag, isHighlighted: false)
-                        Button { remove(tag) } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 8)
-                        .help("Remove this tag from the clipping")
-                        .accessibilityLabel("Remove \(tag.name)")
-                    }
+            VStack(alignment: .leading, spacing: 6) {
+                sheetLabel(carriedLabel)
+                Flow {
+                    ForEach(carried) { tag in carriedChip(tag) }
                 }
             }
-            .frame(maxHeight: 108)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .contain)
         }
+    }
+
+    /// The capsule the cards and the tag strip already draw, with the way to
+    /// take it off added to it.
+    ///
+    /// A row in a box was the third way this app drew a tag, and it was drawn
+    /// that way in the one place a tag is handled rather than read. Chips are
+    /// also what makes the set honest: they wrap, so seven of them push the
+    /// sheet taller instead of overflowing a fixed box and painting across the
+    /// field and the buttons, which is what the rows did.
+    ///
+    /// Only the ✕ is a button. The chip is a statement of what is on the
+    /// clipping, and a whole-capsule target would make "remove" the thing that
+    /// happens when you click a label to read it.
+    private func carriedChip(_ tag: Tag) -> some View {
+        HStack(spacing: 5) {
+            // The glyph carries the rule and its colour carries the tag's, the
+            // same pairing `tagChip` uses — one element for two facts rather
+            // than a dot beside an icon.
+            Image(systemName: tag.rule.isActive ? "bolt.fill" : "tag.fill")
+                .font(.caption2)
+                .foregroundStyle(TagColor.named(tag.color)?.color ?? .secondary)
+            Text(tag.name).lineLimit(1)
+            Button { remove(tag) } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    // The glyph is 8pt; the thing you have to hit is not.
+                    .frame(width: 14, height: 14)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Remove this tag from the clipping")
+            .accessibilityLabel("Remove \(tag.name)")
+        }
+        .font(.callout)
+        .padding(.leading, 9)
+        .padding(.trailing, 3)
+        .padding(.vertical, 3)
+        .background(Color.primary.opacity(0.06), in: Capsule())
     }
 
     /// Absent rather than empty when there is nothing to show, so a first tag is
@@ -503,31 +562,53 @@ struct HistoryView: View {
     @ViewBuilder
     private var tagChoiceList: some View {
         if !tagChoices.isEmpty {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(Array(tagChoices.enumerated()), id: \.element.id) { index, tag in
-                            Button { add(tag) } label: {
-                                tagChoiceRow(tag, isHighlighted: index == highlighted)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    sheetLabel("Your tags")
+                    Spacer(minLength: 0)
+                    // ↑ and ↓ walk this list, and nothing said so. The keycap is
+                    // the panel's own way of naming a key — it is the chrome of
+                    // a window with no title bar — and this list was the one
+                    // place with a key worth naming and no keycap on it.
+                    KeycapHint(key: "↑↓", label: "Pick")
+                }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(Array(tagChoices.enumerated()), id: \.element.id) { index, tag in
+                                Button { add(tag) } label: {
+                                    tagChoiceRow(tag, isHighlighted: index == highlighted)
+                                }
+                                .buttonStyle(.plain)
+                                .id(tag.id)
                             }
-                            .buttonStyle(.plain)
-                            .id(tag.id)
                         }
                     }
+                    // Keeps the keyboard's row on screen. Without it ↓ walks past
+                    // the fourth row into a highlight nobody can see.
+                    .onChange(of: highlighted) { _, new in
+                        guard let new, tagChoices.indices.contains(new) else { return }
+                        proxy.scrollTo(tagChoices[new].id)
+                    }
                 }
-                // Keeps the keyboard's row on screen. Without it ↓ walks past
-                // the fourth row into a highlight nobody can see.
-                .onChange(of: highlighted) { _, new in
-                    guard let new, tagChoices.indices.contains(new) else { return }
-                    proxy.scrollTo(tagChoices[new].id)
-                }
+                // Four rows and the fifth cut in half: enough to scan, and it says
+                // there is more below without a scroller having to appear.
+                .frame(maxHeight: 108)
+                .scrollIndicators(.never)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
             }
-            // Four rows and the fifth cut in half: enough to scan, and it says
-            // there is more below without a scroller having to appear.
-            .frame(maxHeight: 108)
-            .scrollIndicators(.never)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .contain)
         }
+    }
+
+    /// Names a region of the sheet. Two of them, and they are the whole reason
+    /// the sheet reads at all now: what is on the clipping and what can be put
+    /// on it were two identical grey boxes, told apart only by a small ✕ on the
+    /// rows of one of them.
+    private func sheetLabel(_ key: LocalizedStringKey) -> some View {
+        Text(key)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 
     private var tagChoices: [Tag] {
