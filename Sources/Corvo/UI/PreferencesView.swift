@@ -5,18 +5,25 @@ import UniformTypeIdentifiers
 
 /// The Settings window.
 ///
-/// Deliberately the platform's shape rather than the panel's: a grouped `Form`
-/// in the `Settings` scene, system controls, real window chrome, and no keycap
-/// rail. The panel is a HUD you hold a shortcut down for and it is chromeless,
-/// which is exactly why it had to grow a rail to say how to leave; this is a
-/// window you open twice a year and close with ⌘W, and inventing a second way
-/// out of it would be the panel cosplaying as itself.
+/// Deliberately the platform's shape rather than the panel's: a sidebar of
+/// panes over grouped `Form`s, system controls, real window chrome, and no
+/// keycap rail. The panel is a HUD you hold a shortcut down for and it is
+/// chromeless, which is exactly why it had to grow a rail to say how to leave;
+/// this is a window you open twice a year and close with ⌘W, and inventing a
+/// second way out of it would be the panel cosplaying as itself.
 ///
-/// What does carry over is narrower and true. A bundle id is set in mono here
-/// for the same reason a clipping is set in mono there — the shape of
+/// The sidebar replaced one 520pt scroll holding all five sections. That shape
+/// asked the reader to scroll past retention to find out whether Accessibility
+/// was granted, and it had no way to say what any section *was* beyond a line
+/// of grey text. Split up, every pane fits without scrolling and the tinted
+/// glyphs carry the category — which is the arrangement System Settings itself
+/// uses, so it is what the user already knows how to read.
+///
+/// What carries over from the panel is narrower and true. A bundle id is set in
+/// mono here for the same reason a clipping is set in mono there — the shape of
 /// `com.apple.Terminal` is half of recognising it — and every colour is a
-/// semantic system colour, so light and dark both come out right without a
-/// second code path.
+/// semantic system colour or a system tint, so light and dark both come out
+/// right without a second code path.
 struct PreferencesView: View {
     let prefs: Preferences
 
@@ -64,8 +71,56 @@ struct PreferencesView: View {
     /// rule about refused shortcuts lives and where it is tested.
     @State private var shortcutState: ShortcutState
     @FocusState private var focus: Field?
+    /// Which pane the sidebar is showing. Not persisted: the window itself is
+    /// kept between openings, so the selection already survives a close — and
+    /// storing it would mean a user who once opened Ignored apps lands there
+    /// forever, past the pane that says whether Corvo can paste at all.
+    @State private var pane: Pane = .general
 
     private enum Field { case items, days }
+
+    /// The sidebar. Each case owns its title, glyph and tint so there is one
+    /// place to read the list off, rather than three lists to keep in step.
+    ///
+    /// The tints are system colours rather than a palette of our own: they are
+    /// the ones macOS already adjusts for dark mode, for increased contrast and
+    /// for the accessibility colour filters, and none of that is worth
+    /// reimplementing to get a slightly different orange.
+    private enum Pane: CaseIterable, Identifiable {
+        case general, shortcut, history, ignored, permissions
+
+        var id: Self { self }
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .general: "General"
+            case .shortcut: "Shortcut"
+            case .history: "History"
+            case .ignored: "Ignored apps"
+            case .permissions: "Permissions"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .general: "gearshape.fill"
+            case .shortcut: "keyboard.fill"
+            case .history: "clock.arrow.circlepath"
+            case .ignored: "hand.raised.fill"
+            case .permissions: "lock.shield.fill"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .general: .gray
+            case .shortcut: .indigo
+            case .history: .orange
+            case .ignored: .pink
+            case .permissions: .blue
+            }
+        }
+    }
 
     init(prefs: Preferences,
          onHotkeyChange: @escaping @MainActor (Hotkey?) -> Bool = { _ in true },
@@ -85,15 +140,33 @@ struct PreferencesView: View {
     }
 
     var body: some View {
-        Form {
-            startup
-            shortcut
-            history
-            ignoredApps
-            permissions
+        NavigationSplitView {
+            List(Pane.allCases, selection: $pane) { pane in
+                row(pane)
+            }
+            .navigationSplitViewColumnWidth(190)
+            // There is nothing to collapse to. Hiding the sidebar in a window
+            // whose entire navigation *is* the sidebar leaves a pane with no way
+            // back, and macOS puts the button there by default.
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            detail
+                // The window title follows the pane, which is what System
+                // Settings does and what makes the title bar say something
+                // other than the app's own name twice.
+                .navigationTitle(Text(pane.title))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .formStyle(.grouped)
-        .frame(width: 420)
+        // The size lives here and `SettingsWindow` reads it back off the hosting
+        // view, so the window and the content cannot disagree — which they did,
+        // as 460 against 420.
+        //
+        // The height is the tallest pane's, measured rather than picked: Ignored
+        // apps comes to about 240pt with the editor, the button and both notes
+        // showing. Every pane shares one window, so the rest have space under
+        // them — that is what a sidebar costs, and 460 spent it twice over.
+        // A pane that does outgrow this scrolls; `Form` already does that.
+        .frame(width: 640, height: 380)
         // Both retention fields format *and parse* through this, and the
         // confirmation's `^[…](inflect: true)` agrees its grammar against it.
         // Left alone on a pt-BR machine the field reads "1.000" and the alert
@@ -139,6 +212,44 @@ struct PreferencesView: View {
             // something you do *in* Settings, so saying both made one trip sound
             // like two.
             hideMessage
+        }
+    }
+
+    // MARK: - Sidebar
+
+    /// One sidebar row: a tinted glyph tile and the pane's name.
+    ///
+    /// The tile is a `Label` icon rather than a hand-placed `HStack` so the row
+    /// keeps the sidebar's own spacing, selection highlight and hit area — and
+    /// so VoiceOver reads it as one thing with the title, not as an image
+    /// followed by a word.
+    private func row(_ pane: Pane) -> some View {
+        Label {
+            Text(pane.title)
+        } icon: {
+            Image(systemName: pane.symbol)
+                // Fixed size rather than a text style: these sit inside a tile
+                // that does not grow, and a glyph scaled up by the system text
+                // size would clip out of it.
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(pane.tint.gradient, in: RoundedRectangle(cornerRadius: 5))
+        }
+        .padding(.vertical, 1)
+    }
+
+    // MARK: - Panes
+
+    /// Each pane is its own `Form`, so a section keeps the grouped inset look it
+    /// had when all five shared one.
+    @ViewBuilder private var detail: some View {
+        switch pane {
+        case .general: Form { startup }.formStyle(.grouped)
+        case .shortcut: Form { shortcut }.formStyle(.grouped)
+        case .history: Form { history }.formStyle(.grouped)
+        case .ignored: Form { ignoredApps }.formStyle(.grouped)
+        case .permissions: Form { permissions }.formStyle(.grouped)
         }
     }
 
@@ -267,7 +378,7 @@ struct PreferencesView: View {
     /// Placed second, ahead of retention: it is the setting people come here to
     /// change, and the two retention numbers are set once.
     private var shortcut: some View {
-        Section("Shortcut") {
+        Section {
             LabeledContent("Open panel") {
                 HotkeyRecorder(hotkey: shortcutState.hotkey,
                                onArmedChange: onRecordingArmed,
@@ -318,7 +429,7 @@ struct PreferencesView: View {
     // MARK: - History
 
     private var history: some View {
-        Section("History") {
+        Section {
             rule("Keep at most", isOn: $limitsItems, value: $maxItems,
                  field: .items, unit: "clippings")
             rule("Delete after", isOn: $limitsAge, value: $maxAgeDays,
@@ -351,6 +462,11 @@ struct PreferencesView: View {
                     .foregroundStyle(.secondary)
                 Toggle(label, isOn: isOn)
                     .labelsHidden()
+                    // A `Toggle` in a `LabeledContent`'s trailing content loses
+                    // the switch style a `Form` row normally gives it and comes
+                    // out as a checkbox — beside the two real switches one pane
+                    // over, that read as a different kind of setting.
+                    .toggleStyle(.switch)
                     // Committed the moment it moves, unlike the number beside it: a
                     // switch has no half-typed state to protect, and leaving it
                     // uncommitted would mean the confirmation for switching a rule
@@ -381,7 +497,7 @@ struct PreferencesView: View {
     // MARK: - Ignored apps
 
     private var ignoredApps: some View {
-        Section("Ignored apps") {
+        Section {
             TextEditor(text: $blocklistText)
                 .font(.system(.body, design: .monospaced))
                 .scrollContentBackground(.hidden)
@@ -461,7 +577,7 @@ struct PreferencesView: View {
     // MARK: - Permissions
 
     private var permissions: some View {
-        Section("Permissions") {
+        Section {
             LabeledContent {
                 Button("Open Settings") { Paster.openAccessibilitySettings() }
                     .controlSize(.small)

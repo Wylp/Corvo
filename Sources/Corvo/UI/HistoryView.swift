@@ -21,7 +21,14 @@ struct HistoryView: View {
     /// menu, and that menu is exactly what disappears with the icon.
     let onOpenSettings: () -> Void
 
+    /// Narrows the tag sheet's left column. It used to be the name of the tag
+    /// being made as well, and one field could not go on being both once the
+    /// right column grew the rest of a tag's parameters.
     @State private var tagText = ""
+    /// The tag being written in the sheet's right column. Reset when the sheet
+    /// opens, so a cancelled draft is not waiting there the next time.
+    @State private var tagDraft = Tag(id: nil, name: "", color: nil)
+    @State private var tagKind = TagKind.all
     /// Which row of the tag sheet the keyboard is on, or `nil` for "still in the
     /// field". See `HistoryModel.highlight`.
     @State private var highlighted: Int?
@@ -217,8 +224,42 @@ struct HistoryView: View {
                                      },
                                      onHoverEnd: { PreviewPanel.shared.endHover() })
                                 .id(item.id)
-                                .onTapGesture(count: 2) { onPaste([item]) }
-                                .onTapGesture { model.select(index) }
+                                // One gesture, and the click count read off the
+                                // event — not a `count: 2` registered beside a
+                                // `count: 1`.
+                                //
+                                // That pair is what made a click take half a
+                                // second to show. SwiftUI cannot know a single
+                                // tap is single until the double-click window
+                                // has passed without a second one, so it holds
+                                // the handler for exactly that long. Measured
+                                // against a bare single tap: 422–445ms to
+                                // select, against 78–85ms, on a machine whose
+                                // `NSEvent.doubleClickInterval` is 0.5s — and
+                                // that interval is a setting, so it is worse on
+                                // a machine tuned for a slower double click.
+                                //
+                                // Asking the event instead removes the question
+                                // rather than answering it faster: every click
+                                // is dispatched the moment it lands, carrying
+                                // the number of the click it is. The first of a
+                                // double click now selects before the second
+                                // pastes, which it did not used to — that is
+                                // what every list on this platform does, and it
+                                // is the same path a single click already took.
+                                //
+                                // The ⌘ and ⇧ taps below do not bring the wait
+                                // back — measured with all three stacked, which
+                                // is the arrangement that actually ships.
+                                .onTapGesture {
+                                    // Falling back to 1 rather than to 2 is the
+                                    // safe direction: with no event to ask, this
+                                    // selects a card, and the alternative pastes
+                                    // one into whatever the user was last in.
+                                    let clicks = NSApp.currentEvent?.clickCount ?? 1
+                                    guard clicks < 2 else { return onPaste([item]) }
+                                    model.select(index)
+                                }
                                 // ⇧-click, the way a range is selected in every
                                 // list on this platform. `highPriorityGesture`
                                 // and not `.gesture`, because the plain tap
@@ -368,6 +409,8 @@ struct HistoryView: View {
             }
             shortcutButton("t", modifiers: .command) {
                 tagText = ""
+                tagDraft = Tag(id: nil, name: "", color: nil)
+                tagKind = .all
                 highlighted = nil
                 model.sheet = .naming
             }
@@ -424,40 +467,176 @@ struct HistoryView: View {
         .keyboardShortcut(key, modifiers: modifiers)
     }
 
-    /// The field makes a tag; the list below it reaches one that already exists.
+    /// Reach a tag that exists, on the left; make one, on the right.
     ///
-    /// Both are needed, and the list is the half that was missing. A tag is
-    /// stored under the name it was written with, so typing at a tag one letter
-    /// or one capital off from the one that was meant does not fail — it quietly
-    /// files the clipping under a second tag beside it, and the user finds out
-    /// when the sidebar has "Work" and "work" in it. Reaching an existing tag
-    /// should not require remembering how it was spelled.
+    /// Both are needed. A tag is stored under the name it was written with, so
+    /// typing at a tag one letter or one capital off from the one that was meant
+    /// does not fail — it quietly files the clipping under a second tag beside
+    /// it, and the user finds out when the strip has "Work" and "work" in it.
+    /// Reaching an existing tag should not require remembering how it was
+    /// spelled.
+    ///
+    /// The right half is the whole `TagEditor`, not a name field. Making a tag
+    /// here used to produce a tag with nothing but a name: no colour, no rule,
+    /// no source. Getting those onto it meant leaving, opening the manager,
+    /// finding the tag just made and filling it in — two screens for one
+    /// thought. It is the same editor the manager shows rather than a second
+    /// form beside it, so there is one place where a tag's parameters are
+    /// defined and one place to fix when they change.
+    ///
+    /// One field per job, which is what splits the old single field in two: it
+    /// was both the filter over existing tags and the name of the new one, and
+    /// those want opposite things the moment the form grew past a name.
     private var tagSheet: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Add a tag").font(.headline)
-            TextField("Tag name", text: $tagText)
-                .onSubmit { confirmTag() }
-                // On the field, which is what holds focus while this sheet is
-                // up. An arrow key that reaches a single-line text field is
+        VStack(spacing: 0) {
+            tagSheetHeader
+            Divider()
+            HStack(spacing: 0) {
+                tagPicker
+                Divider()
+                TagEditor(model: model, draft: $tagDraft, onSaved: attach,
+                          showsActions: false)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    // Whichever half was typed in last owns ⏎, and the button
+                    // says which. Without this, starting to write a new tag
+                    // while a search match is highlighted would leave ⏎ adding
+                    // that match instead of the tag being written.
+                    .onChange(of: tagDraft.name) { _, _ in highlighted = nil }
+            }
+            Divider()
+            tagSheetFooter
+        }
+        .frame(width: 640, height: 430)
+    }
+
+    /// What is being tagged, and what it already carries. Spans both columns
+    /// because it is the subject of both of them.
+    private var tagSheetHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Names what it acts on. ⌘T reaches the whole selection, and a
+            // headline that said "Add a tag" over five selected clippings was
+            // the sheet keeping the most important thing about itself to itself.
+            Text(tagSheetTitle).font(.headline)
+            tagsAlreadyOn
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private var tagSheetFooter: some View {
+        HStack(spacing: 10) {
+            KeycapHint(key: "↑↓", label: "Pick")
+            Spacer(minLength: 8)
+            Button("Cancel") { model.sheet = nil }
+            // Adds the highlighted tag when the list has the keyboard, and
+            // otherwise makes the one being written on the right. `confirmTag`
+            // is where that choice lives.
+            Button(addButtonLabel) { confirmTag() }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canConfirmTag)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 44)
+    }
+
+    /// Says which of the two halves ⏎ is currently pointing at, because the two
+    /// do different things and the button is the only thing on screen that can
+    /// tell them apart.
+    private var addButtonLabel: LocalizedStringKey {
+        guard highlighted == nil else { return "Add" }
+        return "Create and add"
+    }
+
+    private var canConfirmTag: Bool {
+        guard highlighted == nil else { return true }
+        return TagDraft.canSave(tagDraft, among: model.tags)
+    }
+
+    /// The left column: everything that already exists, narrowed two ways.
+    private var tagPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                sheetLabel("Your tags")
+                Spacer(minLength: 0)
+                // The count after filtering, so an empty list is visibly the
+                // filter's doing rather than the app having lost the tags.
+                // `format:` and not interpolation: a bare "\(count)" extracts
+                // "%lld" into the String Catalog as a translatable string, which
+                // is a key no translator can do anything with.
+                Text(tagChoices.count, format: .number)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+            }
+            TextField("Search tags", text: $tagText)
+                .textFieldStyle(.roundedBorder)
+                // On the field, which is what holds focus when this column has
+                // it. An arrow key that reaches a single-line text field is
                 // spent moving the caret, so this is also the only place the
                 // list can be reached without the mouse.
                 .onKeyPress(.upArrow) { moveHighlight(-1) }
                 .onKeyPress(.downArrow) { moveHighlight(1) }
-                // Typing changes which tags are on offer, so a row picked
-                // against the old list is no longer the row under the cursor.
-                // Dropping back to the field is the answer that cannot pick the
-                // wrong tag.
-                .onChange(of: tagText) { _, _ in highlighted = nil }
-            tagsAlreadyOn
+                // Typing takes the best match, so ⌘T, a few letters and ⏎ is
+                // still the whole gesture for the thing this sheet is opened
+                // for most.
+                //
+                // This field used to refuse to highlight anything, and that was
+                // right while it was also the name of the tag being made:
+                // answering ⏎ with somebody else's tag when a new name had been
+                // typed would have been the sheet doing the opposite of what
+                // was asked. The field cannot make a tag any more — the right
+                // column does that — so the risk it was guarding against is
+                // gone, and what is left is a search box that ought to act like
+                // one.
+                .onChange(of: tagText) { _, text in
+                    highlighted = text.isEmpty || tagChoices.isEmpty ? nil : 0
+                }
+            tagKindFilter
             tagChoiceList
-            HStack {
-                Spacer()
-                Button("Cancel") { model.sheet = nil }
-                Button("Add") { confirmTag() }.keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(width: 250)
+    }
+
+    /// The second filter, and it is not invented for this screen: whether a tag
+    /// applies itself is the one fact the strip and the manager's list already
+    /// single out, each with the same bolt. Sorting by it is what makes a long
+    /// list of hand-applied tags stop hiding the two that have rules.
+    private var tagKindFilter: some View {
+        Picker("Show", selection: $tagKind) {
+            ForEach(TagKind.allCases) { kind in
+                Text(kind.label).tag(kind)
             }
         }
-        .padding(20)
-        .frame(width: 300)
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    /// "this clipping" over one, the count over more.
+    ///
+    /// Two strings rather than one with `^[…](inflect: true)`, and not only
+    /// because "Tag 1 clipping" is what a program says. The branch is on
+    /// `count > 1`, so the other side is plural for every number that can reach
+    /// it and needs no agreement engine to say so — which matters here, because
+    /// this app's `inflect:` markup does not currently work: `Text` strips it
+    /// and leaves the singular ("Tag 3 clipping"), and `String(localized:)`
+    /// leaks it raw. Seven strings written before this one have the same
+    /// problem and are not this change's to fix.
+    private var tagSheetTitle: LocalizedStringKey {
+        let count = model.selectedItems.count
+        guard count > 1 else { return "Tag this clipping" }
+        return "Tag \(count) clippings"
+    }
+
+    /// The one label with something to explain rather than to name: a tag on
+    /// three of five selected clippings is not here, and nothing else on the
+    /// sheet would ever say so. Split for the reason `tagSheetTitle` is.
+    private var carriedLabel: LocalizedStringKey {
+        let count = model.selectedItems.count
+        guard count > 1 else { return "On this clipping" }
+        return "On all \(count) clippings"
     }
 
     /// What this clipping already carries, each row a way to take it back off.
@@ -478,64 +657,152 @@ struct HistoryView: View {
         let onAll = model.tagsOnAll(model.selectedItems)
         let carried = model.tags.filter { onAll.contains($0.name) }
         if !carried.isEmpty {
-            VStack(spacing: 0) {
-                ForEach(carried) { tag in
-                    HStack(spacing: 0) {
-                        tagChoiceRow(tag, isHighlighted: false)
-                        Button { remove(tag) } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 8)
-                        .help("Remove this tag from the clipping")
-                        .accessibilityLabel("Remove \(tag.name)")
-                    }
+            VStack(alignment: .leading, spacing: 6) {
+                sheetLabel(carriedLabel)
+                Flow {
+                    ForEach(carried) { tag in carriedChip(tag) }
                 }
             }
-            .frame(maxHeight: 108)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .contain)
         }
     }
 
-    /// Absent rather than empty when there is nothing to show, so a first tag is
-    /// made in a sheet the same size as the one that made it.
-    @ViewBuilder
+    /// The capsule the cards and the tag strip already draw, with the way to
+    /// take it off added to it.
+    ///
+    /// A row in a box was the third way this app drew a tag, and it was drawn
+    /// that way in the one place a tag is handled rather than read. Chips are
+    /// also what makes the set honest: they wrap, so seven of them push the
+    /// sheet taller instead of overflowing a fixed box and painting across the
+    /// field and the buttons, which is what the rows did.
+    ///
+    /// Only the ✕ is a button. The chip is a statement of what is on the
+    /// clipping, and a whole-capsule target would make "remove" the thing that
+    /// happens when you click a label to read it.
+    private func carriedChip(_ tag: Tag) -> some View {
+        HStack(spacing: 5) {
+            // The glyph carries the rule and its colour carries the tag's, the
+            // same pairing `tagChip` uses — one element for two facts rather
+            // than a dot beside an icon.
+            Image(systemName: tag.rule.isActive ? "bolt.fill" : "tag.fill")
+                .font(.caption2)
+                .foregroundStyle(TagColor.named(tag.color)?.color ?? .secondary)
+            Text(tag.name).lineLimit(1)
+            Button { remove(tag) } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    // The glyph is 8pt; the thing you have to hit is not.
+                    .frame(width: 14, height: 14)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Remove this tag from the clipping")
+            .accessibilityLabel("Remove \(tag.name)")
+        }
+        .font(.callout)
+        .padding(.leading, 9)
+        .padding(.trailing, 3)
+        .padding(.vertical, 3)
+        .background(Color.primary.opacity(0.06), in: Capsule())
+    }
+
+    /// The column is a fixed height, so this fills it rather than sizing to its
+    /// rows: a list that grew and shrank as the filter narrowed would move the
+    /// filter above it on every keystroke.
     private var tagChoiceList: some View {
-        if !tagChoices.isEmpty {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(Array(tagChoices.enumerated()), id: \.element.id) { index, tag in
-                            Button { add(tag) } label: {
-                                tagChoiceRow(tag, isHighlighted: index == highlighted)
-                            }
-                            .buttonStyle(.plain)
-                            .id(tag.id)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(tagChoices.enumerated()), id: \.element.id) { index, tag in
+                        Button { add(tag) } label: {
+                            tagChoiceRow(tag, isHighlighted: index == highlighted)
                         }
+                        .buttonStyle(.plain)
+                        .id(tag.id)
                     }
                 }
-                // Keeps the keyboard's row on screen. Without it ↓ walks past
-                // the fourth row into a highlight nobody can see.
-                .onChange(of: highlighted) { _, new in
-                    guard let new, tagChoices.indices.contains(new) else { return }
-                    proxy.scrollTo(tagChoices[new].id)
-                }
             }
-            // Four rows and the fifth cut in half: enough to scan, and it says
-            // there is more below without a scroller having to appear.
-            .frame(maxHeight: 108)
-            .scrollIndicators(.never)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            // Keeps the keyboard's row on screen. Without it ↓ walks past the
+            // last visible row into a highlight nobody can see.
+            .onChange(of: highlighted) { _, new in
+                guard let new, tagChoices.indices.contains(new) else { return }
+                proxy.scrollTo(tagChoices[new].id)
+            }
         }
+        .scrollIndicators(.never)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+        .overlay { if tagChoices.isEmpty { emptyChoices } }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Which of the three reasons the list is empty, because they ask different
+    /// things of the reader: make one, widen the filter, or stop — there is
+    /// nothing left to add.
+    private var emptyChoices: some View {
+        Text(emptyChoicesNote)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 12)
+    }
+
+    private var emptyChoicesNote: LocalizedStringKey {
+        guard !model.tags.isEmpty else { return "No tags yet. Make the first one on the right." }
+        guard tagText.isEmpty, tagKind == .all else { return "No tag matches this search." }
+        return "Every tag you have is already on this."
+    }
+
+    /// Names a region of the sheet. Two of them, and they are the whole reason
+    /// the sheet reads at all now: what is on the clipping and what can be put
+    /// on it were two identical grey boxes, told apart only by a small ✕ on the
+    /// rows of one of them.
+    private func sheetLabel(_ key: LocalizedStringKey) -> some View {
+        Text(key)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 
     private var tagChoices: [Tag] {
         model.tagChoices(for: model.selectedItems, matching: tagText)
+            .filter(tagKind.accepts)
     }
 
-    /// The dot and the name in the order the sidebar and the tag manager already
-    /// use them.
+    /// The second axis the left column filters on.
+    ///
+    /// Not invented for this screen: whether a tag applies itself is the one
+    /// fact the tag strip and the manager's list already single out, each with
+    /// the same bolt. This is that distinction made selectable.
+    enum TagKind: CaseIterable, Identifiable {
+        case all, auto, manual
+
+        var id: Self { self }
+
+        var label: LocalizedStringKey {
+            switch self {
+            case .all: "All"
+            case .auto: "Auto"
+            case .manual: "Manual"
+            }
+        }
+
+        func accepts(_ tag: Tag) -> Bool {
+            switch self {
+            case .all: true
+            case .auto: tag.rule.isActive
+            case .manual: !tag.rule.isActive
+            }
+        }
+    }
+
+    /// The dot, the name and the bolt, in the order the tag manager's list
+    /// already puts them.
+    ///
+    /// The bolt is not decoration here, and it was missing: the filter above
+    /// this list separates tags that apply themselves from tags that do not, and
+    /// a row that does not say which it is leaves the user filtering on a
+    /// property they cannot see. The manager's list has carried it all along.
     private func tagChoiceRow(_ tag: Tag, isHighlighted: Bool) -> some View {
         HStack(spacing: 7) {
             Circle()
@@ -543,7 +810,13 @@ struct HistoryView: View {
                 .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
             Text(tag.name).lineLimit(1)
-            Spacer(minLength: 0)
+            Spacer(minLength: 4)
+            if tag.rule.isActive {
+                Image(systemName: "bolt.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Applies itself")
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -601,7 +874,19 @@ struct HistoryView: View {
         if let index = highlighted, tagChoices.indices.contains(index) {
             return add(tagChoices[index])
         }
-        model.addTag(tagText, to: model.selectedItems)
+        // Written through `saveTag` and not `addTag(_:to:)`: the latter makes a
+        // tag out of a name alone, which is exactly the tag with no colour and
+        // no rule that the right column exists to stop this sheet producing.
+        guard TagDraft.canSave(tagDraft, among: model.tags) else { return }
+        guard let saved = model.saveTag(tagDraft) else { return }
+        attach(saved)
+    }
+
+    /// The editor's `onSaved`, and where ⏎ lands once the draft is stored. Puts
+    /// the tag on the selection, which is the one thing this sheet does that the
+    /// manager does not.
+    private func attach(_ tag: Tag) {
+        model.addTag(tag.name, to: model.selectedItems)
         model.sheet = nil
     }
 

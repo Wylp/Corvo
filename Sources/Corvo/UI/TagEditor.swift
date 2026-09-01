@@ -45,6 +45,29 @@ enum TagColor: String, CaseIterable, Identifiable {
     }
 }
 
+/// Whether a draft can be written at all.
+///
+/// Out of the view for the reason `ShortcutEditor` and `RetentionEdit` are out
+/// of theirs: two screens ask it now — the tag manager and the panel's tag
+/// sheet — and a gate that lives inside a SwiftUI body is a gate nothing can
+/// ask a question of. The wording for each refusal stays in `TagEditor`, which
+/// is the only place that has to be localized.
+enum TagDraft {
+    /// The unique index on `tag.name` is the real enforcer; this is what keeps a
+    /// user from reaching it. Trimmed, because the stored name is trimmed and
+    /// "Work " would otherwise look like a free name and fail on write.
+    static func canSave(_ draft: Tag, among tags: [Tag]) -> Bool {
+        let trimmed = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard !tags.contains(where: { $0.name == trimmed && $0.id != draft.id }) else {
+            return false
+        }
+        // An empty field is not an invalid pattern — it is a tag with no rule.
+        guard let pattern = draft.pattern, !pattern.isEmpty else { return true }
+        return TagRule.problem(with: pattern) == nil
+    }
+}
+
 /// One tag's name, colour and rule.
 ///
 /// The rule is the reason this screen exists, so the pattern field is where the
@@ -59,6 +82,13 @@ struct TagEditor: View {
     /// Called with the stored tag after a write, so the list can keep the row
     /// selected across the reload that follows.
     let onSaved: (Tag) -> Void
+    /// Whether the editor draws its own Save row.
+    ///
+    /// The tag manager is the screen this was built for and it has nowhere else
+    /// to put them. The panel's tag sheet does: its footer already carries the
+    /// Cancel it needs anyway, and a second Save inside the form beside it would
+    /// be two buttons for one act.
+    var showsActions = true
 
     @State private var preview: AutoTagger.Matches = .none
     @State private var isConfirmingApply = false
@@ -77,12 +107,12 @@ struct TagEditor: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 nameField
+                colorField
                 patternField
                 sourceField
-                Toggle("Ask me to name what it catches", isOn: $draft.promptsForName)
-                    .controlSize(.small)
+                promptField
                 Spacer(minLength: 0)
-                actions
+                if showsActions { actions }
             }
             .padding(16)
         }
@@ -116,7 +146,7 @@ struct TagEditor: View {
 
     private var nameField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            fieldLabel("Name")
+            fieldLabel("Name", .required)
             TextField("Name", text: $draft.name)
                 .textFieldStyle(.roundedBorder)
                 .labelsHidden()
@@ -128,13 +158,20 @@ struct TagEditor: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// Its own row rather than tucked into the Pattern header, where it used to
+    /// sit: a colour is a parameter of the tag like the others, and hanging it
+    /// off an unrelated label was the reason it could not say it was optional.
+    private var colorField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            fieldLabel("Color", .optional)
+            swatches
+        }
+        .accessibilityElement(children: .contain)
+    }
+
     private var patternField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                fieldLabel("Pattern")
-                Spacer(minLength: 0)
-                swatches
-            }
+            fieldLabel("Pattern", .optional)
             TextField("Pattern", text: patternText)
                 .textFieldStyle(.roundedBorder)
                 .labelsHidden()
@@ -152,7 +189,7 @@ struct TagEditor: View {
     /// is where someone looks when the app they want is not listed.
     private var sourceField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            fieldLabel("From app")
+            fieldLabel("From app", .optional)
             Picker("From app", selection: sourceBinding) {
                 Text("Any app").tag(String?.none)
                 ForEach(sourceChoices) { source in
@@ -293,6 +330,17 @@ struct TagEditor: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// The one parameter that is a behaviour rather than a value, so it says what
+    /// it does in the control rather than in a label above it.
+    private var promptField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            fieldLabel("When it catches something", .optional)
+            Toggle("Ask me to name what it catches", isOn: $draft.promptsForName)
+                .controlSize(.small)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
     // MARK: - Validation
 
     private var trimmedName: String {
@@ -314,7 +362,7 @@ struct TagEditor: View {
 
     private var patternIsValid: Bool { patternProblem == nil }
 
-    private var canSave: Bool { !trimmedName.isEmpty && !nameIsTaken && patternIsValid }
+    private var canSave: Bool { TagDraft.canSave(draft, among: model.tags) }
 
     // MARK: - Bindings and actions
 
@@ -382,10 +430,34 @@ struct TagEditor: View {
 
     // MARK: - Pieces
 
-    private func fieldLabel(_ key: LocalizedStringKey) -> some View {
-        Text(key)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+    /// Which parameters have to be filled in.
+    ///
+    /// Marked on every row rather than on the one that is required. Four
+    /// "Optional"s is more words, and it is the reading that does not depend on
+    /// the user knowing that an unmarked field means anything at all — this form
+    /// had five fields and one of them was load-bearing, and nothing said which.
+    private enum Requirement {
+        case required, optional
+
+        var word: LocalizedStringKey {
+            switch self {
+            case .required: "Required"
+            case .optional: "Optional"
+            }
+        }
+    }
+
+    private func fieldLabel(_ key: LocalizedStringKey,
+                            _ requirement: Requirement) -> some View {
+        HStack(spacing: 5) {
+            Text(key)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(requirement.word)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     /// Icon, colour and words together — none of the three carries the meaning
