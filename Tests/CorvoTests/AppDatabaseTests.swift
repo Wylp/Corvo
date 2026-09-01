@@ -109,3 +109,87 @@ import GRDB
         #expect(tag.contains("promptsForName"))
     }
 }
+
+
+/// The question this migration has to answer before it ships: an index is built
+/// from the rows that are already there, so nothing is read out and written
+/// back and no table is recreated — but "should be fine" is not an answer about
+/// somebody's clipboard history. So a v2 database is filled, migrated, and
+/// counted.
+///
+/// `eraseDatabaseOnSchemaChange` is the one setting that would make this false,
+/// and `AppDatabase.make` does not set it. This fails if anyone ever does.
+@Test func migratingAV2DatabaseToV3KeepsEveryRow() throws {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("corvo-migrate-v3-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let dbQueue = try DatabaseQueue(path: dir.appendingPathComponent("corvo.sqlite").path)
+    try AppDatabase.migrator.migrate(dbQueue, upTo: "v2")
+
+    try dbQueue.write { db in
+        for i in 1...5 {
+            try db.execute(sql: """
+                INSERT INTO item (kind, text, label, sourceBundleId, sourceName,
+                                  contentHash, pinned, createdAt)
+                VALUES ('text', ?, ?, 'com.apple.Terminal', 'Terminal', ?, ?, ?)
+                """, arguments: ["clipping \(i)", i == 3 ? "the good one" : nil,
+                                 "hash\(i)", i == 2, "2026-01-0\(i) 00:00:00.000"])
+        }
+        try db.execute(sql: "INSERT INTO tag (name, color) VALUES ('work', '#ff0000')")
+        try db.execute(sql: "INSERT INTO itemTag (itemId, tagId) VALUES (4, 1)")
+    }
+
+    try AppDatabase.migrator.migrate(dbQueue)
+
+    // Read out first, assert after: `try` inside an `#expect` macro does not
+    // make the closure throwing, and this reads plainly anyway.
+    let (items, tags, links, texts, pinned, label, colour) = try dbQueue.read { db in
+        (try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM item"),
+         try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM tag"),
+         try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM itemTag"),
+         try String.fetchAll(db, sql: "SELECT text FROM item ORDER BY id"),
+         try Int64.fetchOne(db, sql: "SELECT id FROM item WHERE pinned = 1"),
+         try String.fetchOne(db, sql: "SELECT label FROM item WHERE id = 3"),
+         try String.fetchOne(db, sql: "SELECT color FROM tag WHERE name = 'work'"))
+    }
+
+    #expect(items == 5)
+    #expect(tags == 1)
+    #expect(links == 1)
+    // Not just the count: what was in the rows is still in them.
+    #expect(texts == ["clipping 1", "clipping 2", "clipping 3", "clipping 4", "clipping 5"])
+    #expect(pinned == 2)
+    #expect(label == "the good one")
+    #expect(colour == "#ff0000")
+}
+
+/// What the index is for. `USE TEMP B-TREE FOR ORDER BY` in this plan means
+/// SQLite is sorting the whole history to hand back 200 rows, which is what the
+/// panel felt like before v3 — and it would come back silently if the ORDER BY
+/// and the index ever stopped matching.
+@Test func theListIsOrderedByAnIndexRatherThanBySortingTheHistory() throws {
+    let dbQueue = try AppDatabase.make(at: nil)
+
+    let plan = try dbQueue.read { db in
+        try Row.fetchAll(db, sql: """
+            EXPLAIN QUERY PLAN
+            SELECT item.* FROM item
+            ORDER BY item.pinned DESC, item.createdAt DESC LIMIT 200
+            """).map { "\($0["detail"] ?? "")" }
+    }
+
+    #expect(plan.contains { $0.contains("idx_item_pinned_createdAt") },
+            "the list is not using the index: \(plan)")
+    #expect(!plan.contains { $0.contains("TEMP B-TREE") },
+            "the whole history is being sorted for every list: \(plan)")
+}
+
+/// A database created from scratch has the index too — the divergence that
+/// editing a shipped migration in place would cause.
+@Test func aFreshDatabaseHasTheV3Index() throws {
+    let dbQueue = try AppDatabase.make(at: nil)
+    let indexes = try dbQueue.read { try $0.indexes(on: "item").map(\.name) }
+    #expect(indexes.contains("idx_item_pinned_createdAt"))
+}
