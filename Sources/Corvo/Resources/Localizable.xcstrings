@@ -147,6 +147,9 @@
     "From app": {
       "comment": "Label of the tag editor field holding the source-app half of the rule."
     },
+    "General": {
+      "comment": "Sidebar pane holding launch-at-login and the menu bar icon."
+    },
     "Green": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
     },

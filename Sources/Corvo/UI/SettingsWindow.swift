@@ -28,11 +28,24 @@ final class SettingsWindow {
         if window == nil {
             guard let content = makeContent() else { return }
             let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 460, height: 520),
+                contentRect: .zero,
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered, defer: false)
+            // A fallback, not the title: `PreferencesView` sets a
+            // `navigationTitle` per pane and that is what shows from the first
+            // frame on. This is only what the window is called before the
+            // hosting view has laid out.
             w.title = String(localized: "Corvo Settings")
-            w.contentView = NSHostingView(rootView: content)
+            // No `titlebarAppearsTransparent` here, though a source list window
+            // usually wants it: `NavigationSplitView` already runs the sidebar
+            // to the top of the window on its own. Setting it was tried and
+            // rendered identically apart from losing the titlebar separator.
+            let hosting = NSHostingView(rootView: content)
+            w.contentView = hosting
+            // Sized from the content instead of from a number written here. The
+            // two used to be set separately, 460 against the view's 420, and the
+            // window was 40pt wider than anything in it.
+            w.setContentSize(hosting.fittingSize)
             // Closing must not destroy it: the content holds bindings, and a
             // released window would take an uncommitted edit down with it.
             w.isReleasedWhenClosed = false
