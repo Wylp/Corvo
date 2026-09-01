@@ -31,6 +31,9 @@
     "Add this tag to the clippings already in your history that match": {
       "comment": "Tooltip of the “Apply to existing…” button in the tag editor."
     },
+    "All": {
+      "comment": "Tag sheet filter: show every tag, whether or not it has a rule."
+    },
     "Any app": {
       "comment": "Option in the tag editor's source picker: the rule is not restricted to one app."
     },
@@ -48,6 +51,9 @@
     },
     "Ask me to name what it catches": {
       "comment": "Toggle in the tag editor: offer to name a clipping this tag claims."
+    },
+    "Auto": {
+      "comment": "Tag sheet filter: show only tags that carry a rule and apply themselves."
     },
     "Blocks nothing — not a bundle ID: %@": {
       "comment": "Warning under the blocklist. %@ is the quoted, comma-separated lines that are not bundle ids and are therefore enforcing nothing."
@@ -72,6 +78,9 @@
     },
     "Close": {
       "comment": "Key-hint label for esc, which closes the panel."
+    },
+    "Color": {
+      "comment": "Field label in the tag editor. US spelling, like every other string here."
     },
     "Copied, but not pasted": {
       "comment": "Alert title after Enter when Accessibility permission is missing: the item was copied but not pasted."
@@ -117,6 +126,9 @@
     "Could not save this tag. Nothing was changed.": {
       "comment": "Inline error next to the Save button when the write to the database failed."
     },
+    "Create and add": {
+      "comment": "Button that writes the tag being defined and puts it on the selected clippings. Says 'Add' instead when a tag in the list is highlighted."
+    },
     "Delete": {
       "comment": "Key-hint label for the delete key, which removes the selected item."
     },
@@ -143,6 +155,9 @@
     },
     "Edit tags and rules (⌘⇧T)": {
       "comment": "Tooltip of the sidebar button that opens the tag manager."
+    },
+    "Every tag you have is already on this.": {
+      "comment": "Shown in place of the tag list when nothing is left to add to the selection."
     },
     "From app": {
       "comment": "Label of the tag editor field holding the source-app half of the rule."
@@ -186,6 +201,9 @@
     "Launch at login": {
       "comment": "Toggle that registers Corvo as a login item."
     },
+    "Manual": {
+      "comment": "Tag sheet filter: show only tags with no rule, applied by hand."
+    },
     "Matches %lld+ clippings — only the %lld most recent were checked.": {
       "comment": "Status under the pattern field when the preview filled its scan cap, so there may be older matches it never looked at. First %lld is how many were found, second is the cap."
     },
@@ -219,8 +237,14 @@
     "No rule yet — this tag is only applied by hand.": {
       "comment": "Status under the pattern field when the tag carries no rule at all."
     },
+    "No tag matches this search.": {
+      "comment": "Shown in place of the tag list when the search or the filter excludes everything."
+    },
     "No tags yet": {
       "comment": "Empty state of the tag list."
+    },
+    "No tags yet. Make the first one on the right.": {
+      "comment": "Shown in place of the tag list when none exist."
     },
     "None": {
       "comment": "Recorder button label when no global shortcut is bound. The user cleared it with ⌫, and the menu bar item is then the only way in."
@@ -268,6 +292,9 @@
     },
     "Opens Corvo from any app. Needs ⌘, ⌥ or ⌃.": {
       "comment": "Caption under the shortcut row. The three glyphs are modifier keys and are not translated; ⇧ alone is refused because it is how a capital letter is typed."
+    },
+    "Optional": {
+      "comment": "Marker beside a tag field that can be left alone."
     },
     "Orange": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
@@ -326,6 +353,9 @@
     "Remove this tag from the clipping": {
       "comment": "Tooltip of the × on a tag chip in the panel."
     },
+    "Required": {
+      "comment": "Marker beside a tag field that has to be filled in."
+    },
     "Reset to ⌘⇧V": {
       "comment": "Button that puts the shortcut back to the default. Shown only when the current binding is not the default. ⌘⇧V is the key combination itself and is not translated."
     },
@@ -341,6 +371,9 @@
     "Search content or app…": {
       "comment": "Placeholder of the search field at the top of the panel."
     },
+    "Search tags": {
+      "comment": "Placeholder of the field that narrows the list of existing tags."
+    },
     "Settings": {
       "comment": "Accessibility label of the gear button in the panel's search row, which opens the Settings window."
     },
@@ -355,6 +388,9 @@
     },
     "Shortcut for opening the panel": {
       "comment": "Accessibility label of the shortcut recorder button."
+    },
+    "Show": {
+      "comment": "Accessibility label of the tag sheet's All/Auto/Manual filter. Not drawn on screen."
     },
     "Show History": {
       "comment": "Menu bar item that opens the floating panel."
@@ -431,6 +467,9 @@
     },
     "What is this?": {
       "comment": "Placeholder in the notification's text field, where the user types the name."
+    },
+    "When it catches something": {
+      "comment": "Field label above the switch that asks to be prompted for a name."
     },
     "Without it, Corvo copies but does not paste for you.": {
       "comment": "Caption under the Accessibility status."
