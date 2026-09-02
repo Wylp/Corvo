@@ -14,6 +14,19 @@ cask "corvo" do
 
   app "Corvo.app"
 
+  # Corvo is a background agent, so upgrading almost always happens with it
+  # running — and without this, that upgrade silently does nothing.
+  #
+  # Measured: `brew upgrade` over the running app replaces the binary on disk
+  # (the inode changes) and leaves the old process alive on the deleted one.
+  # Homebrew prints "successfully installed" and the user goes on running the
+  # version they just replaced, with nothing on screen saying so, until they
+  # happen to quit and relaunch.
+  #
+  # `quit` sends the app a quit event before the swap, so what comes back is
+  # the version that was installed.
+  uninstall quit: "com.wylp.corvo"
+
   # Homebrew quarantines what it downloads, and Gatekeeper reads that flag to
   # refuse the first launch of a bundle it cannot verify — which this one is:
   # ad-hoc signed, no Developer ID, not notarized. Removing it here is a
