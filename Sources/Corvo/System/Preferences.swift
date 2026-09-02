@@ -44,6 +44,21 @@ final class Preferences {
         set { defaults.set(newValue, forKey: Self.showsMenuBarIconKey) }
     }
 
+    /// Whether Corvo asks GitHub what the newest release is, once a day.
+    ///
+    /// Absent means **true**, like `showsMenuBarIcon` above: a user who has
+    /// never seen this setting is better off being told a release exists,
+    /// especially given v0.1.0 shipped with a security fix worth reaching.
+    ///
+    /// It is the only setting in the app that turns a network connection on or
+    /// off, which is why it is a setting at all rather than a fixed behaviour —
+    /// the README promises Corvo stays off the network, and this is the one
+    /// exception, so it has to be one the user can withdraw.
+    var checksForUpdates: Bool {
+        get { defaults.object(forKey: "checksForUpdates") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "checksForUpdates") }
+    }
+
     /// Bundle ids whose clippings are never recorded — every line the Settings
     /// window's list holds, including any the user got wrong. `PasteboardMonitor`
     /// compares exact strings, so a line that is not a bundle id matches no app;

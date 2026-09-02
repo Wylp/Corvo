@@ -34,6 +34,14 @@ struct HistoryView: View {
     @State private var highlighted: Int?
     @State private var nameText = ""
     @FocusState private var isSearchFocused: Bool
+    /// Read, never driven from here: the panel shows whether a release exists
+    /// and the Settings window is where anything is done about it.
+    ///
+    /// Computed, not stored. A stored property with a default makes the
+    /// memberwise initialiser private, and every caller and test that builds a
+    /// panel goes through it. `@Observable` tracks the access inside `body`
+    /// either way.
+    private var updates: UpdateModel { .shared }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -84,6 +92,7 @@ struct HistoryView: View {
                 .onSubmit { pasteSelected() }
             // Sibling of the magnifying glass rather than a card-coloured
             // control: this is chrome, and the cards are what the panel is for.
+            if updates.hasUpdate { updateButton }
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")
                     .font(.title3)
@@ -95,6 +104,38 @@ struct HistoryView: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 48)
+    }
+
+    /// Beside the gear rather than drawn on it, and gone entirely the rest of
+    /// the time.
+    ///
+    /// A dot on the gear was the first version and it was too quiet for
+    /// something meant to be pressed: it said a release exists without offering
+    /// to do anything about it, and the thing you had to press was a gear that
+    /// means Settings everywhere else. A labelled button costs nothing while
+    /// there is no update, because while there is no update it is not there.
+    ///
+    /// Yellow rather than the accent colour: this is the one control in the
+    /// panel that is not about the clipping in front of you, and the accent is
+    /// already what selection and the active tag are drawn in.
+    private var updateButton: some View {
+        Button { updates.install() } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down.circle.fill")
+                Text("Update")
+            }
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.yellow)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            // The capsule the tags and the cards already use, so a new control
+            // arrives in a shape the panel has taught the eye to read.
+            .background(Color.yellow.opacity(0.16), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("A newer version of Corvo is available. Corvo will quit and reopen.")
+        .accessibilityLabel("Update Corvo")
     }
 
     /// Tags across the top instead of underneath the apps in the sidebar.
