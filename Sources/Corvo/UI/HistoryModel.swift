@@ -496,9 +496,19 @@ final class HistoryModel {
     func deleteTag(_ tag: Tag) {
         guard let id = tag.id else { return }
         Self.attempt("deleteTag") { try repo.deleteTag(id) }
-        // The sidebar may be filtering by the tag that just stopped existing.
-        // Assigning triggers `reload()` on its own.
-        guard selectedTag != id else { return selectedTag = nil }
+        // The strip may be filtering by the tag that just stopped existing, so
+        // the filter is cleared before the list is re-read — otherwise the query
+        // runs against a tag id that no longer matches anything.
+        //
+        // Cleared and then reloaded explicitly, rather than left to the `didSet`
+        // to do both. It used to: this line was `return selectedTag = nil`, with
+        // a comment saying assigning triggered `reload()` on its own. It stopped
+        // being true when `reload()` was split for the panel's opening cost —
+        // the `didSet` calls `reloadItems()` now, which re-reads the clippings
+        // and not the tags. So the tag was deleted from the database, the list
+        // it was drawn from was never refreshed, and it stayed on screen: the
+        // one arrangement where "delete" looks like it did nothing.
+        if selectedTag == id { selectedTag = nil }
         reload()
     }
 
