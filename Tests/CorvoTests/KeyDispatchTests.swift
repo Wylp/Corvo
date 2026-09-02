@@ -47,7 +47,7 @@ import Testing
 /// were never in doubt — but the panel is the wrong place to find out that a
 /// paste key does nothing, and it costs one event to know.
 @Test @MainActor func theNumberKeysPasteTheCardTheyName() throws {
-    let (model, window, blobs, dir, box) = try panelUnderTest()
+    let (model, window, blobs, dir, box) = try panelUnderTest(pastesOnConfirm: true)
     defer { window.orderOut(nil); try? FileManager.default.removeItem(at: dir) }
     _ = blobs
 
@@ -97,7 +97,11 @@ private final class PasteBox {
 }
 
 @MainActor
-private func panelUnderTest() throws -> (HistoryModel, NSPanel, BlobStore, URL, PasteBox) {
+/// - Parameter pastesOnConfirm: what ⏎ and ⌘1-9 do. Explicit because the
+///   default moved: confirming a clipping copies it now, and a test named for
+///   pasting has to ask for the mode it is named after.
+private func panelUnderTest(pastesOnConfirm: Bool = false)
+    throws -> (HistoryModel, NSPanel, BlobStore, URL, PasteBox) {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("corvo-keys-\(UUID().uuidString)")
     let blobs = BlobStore(directory: dir)
@@ -114,8 +118,9 @@ private func panelUnderTest() throws -> (HistoryModel, NSPanel, BlobStore, URL, 
     }
     try repo.addTag(named: "alpha", to: try #require(first))
 
-    let model = HistoryModel(repo: repo,
-                             prefs: Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+    let prefs = Preferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+    prefs.pastesOnConfirm = pastesOnConfirm
+    let model = HistoryModel(repo: repo, prefs: prefs)
     model.reload()
     let box = PasteBox()
     let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 420),
