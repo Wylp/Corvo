@@ -41,18 +41,28 @@ brew install --cask corvo
 The cask lives in this repository, which is why `brew tap` comes first — Corvo
 is not in homebrew/cask.
 
-### First launch: the build is not notarized
+### The build is not notarized, and the cask opens it anyway
 
-Corvo is ad-hoc signed, not signed with a Developer ID and not notarized by
-Apple. macOS will refuse to open it the first time and say it cannot be
-verified. To open it anyway:
+Corvo is ad-hoc signed: not signed with a Developer ID and not notarized by
+Apple. Nobody has vouched for the binary, and macOS has a way of telling you
+so — Homebrew flags what it downloads with `com.apple.quarantine`, and
+Gatekeeper reads that flag to refuse the first launch of anything it cannot
+verify.
 
-1. Open **System Settings → Privacy & Security**
-2. Scroll to the security section — there is a line saying "Corvo" was blocked
-3. Click **Open Anyway** and confirm
+**The cask removes that flag after installing.** So the app opens, with no trip
+through System Settings, and the warning that would have told you the binary is
+unverified does not appear. That is the trade, and it is made for you at install
+time, which is why it is written here rather than left to be discovered.
 
-You do this once. If you would rather not trust an unnotarized binary, build it
-from source below — the result is the same app.
+If you would rather keep the check, build from source — [the build is
+below](#build-from-source), and the result is the same app. Or install it by
+hand from the [release zip](https://github.com/Wylp/Corvo/releases/latest),
+which keeps the quarantine flag and the "Open Anyway" step with it.
+
+The real fix is notarization, which would make the flag harmless instead of
+something to strip. It needs an Apple Developer Program membership, and it is
+also what would stop each upgrade from resetting the Accessibility permission —
+see below.
 
 ### Accessibility permission
 
@@ -65,6 +75,17 @@ no other way for one app to type into another. Without it Corvo still works, it
 just stops one step short: the clipping goes onto your clipboard and Corvo tells
 you so, and you paste it yourself. Capture, search, tags and pinning need no
 permission at all.
+
+**An upgrade can quietly take it away.** An ad-hoc signed app has no stable
+identity, so replacing the bundle — `brew upgrade`, or a new copy dragged in —
+produces a binary macOS treats as a different app. The Accessibility list goes
+on showing Corvo switched on while the permission no longer applies to what is
+actually running, and pasting stops working with nothing on screen explaining
+why. Corvo says so when it happens; the remedy is to select Corvo in that list,
+remove it with the **−** button, then add it again.
+
+This is the second thing notarization would fix: a Developer ID gives the app a
+stable team identifier, and the permission survives the upgrade.
 
 ### Hiding the menu bar icon
 
