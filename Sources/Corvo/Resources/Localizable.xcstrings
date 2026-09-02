@@ -10,6 +10,9 @@
     "%@ needs ⌘, ⌥ or ⌃ — otherwise it would be swallowed everywhere.": {
       "comment": "Warning under the shortcut row when the user recorded a combination with no ⌘, ⌥ or ⌃. %@ is the combination they typed, which was never registered."
     },
+    "A newer version of Corvo is available. Corvo will quit and reopen.": {
+      "comment": "Tooltip on the Update button. Says the app will close, because it has to be gone for its own bundle to be replaced."
+    },
     "A tag named “%@” already exists.": {
       "comment": "Inline error in the tag editor when the name already belongs to another tag. %@ is the name the user typed."
     },
@@ -52,6 +55,9 @@
     "Ask me to name what it catches": {
       "comment": "Toggle in the tag editor: offer to name a clipping this tag claims."
     },
+    "Asks GitHub once a day whether a newer release exists. No clipping and nothing that identifies you is sent.": {
+      "comment": "Caption under the update switch, explaining the only network connection the app makes."
+    },
     "Auto": {
       "comment": "Tag sheet filter: show only tags that carry a rule and apply themselves."
     },
@@ -63,6 +69,15 @@
     },
     "Cancel": {
       "comment": "Button that dismisses the tag sheet or the rename sheet without changing anything."
+    },
+    "Check for updates": {
+      "comment": "Switch in Settings > General. The only setting in the app that turns a network connection on or off."
+    },
+    "Check now": {
+      "comment": "Button that runs the update check immediately instead of waiting for the daily one."
+    },
+    "Checking…": {
+      "comment": "Shown while the update check is in flight."
     },
     "Choose": {
       "comment": "Confirmation button of that panel. Picks the app for the rule; it does not launch it."
@@ -95,6 +110,15 @@
       "comment": "App name. Never translated.",
       "shouldTranslate": false
     },
+    "Corvo %@ is available. You have %@.": {
+      "comment": "Update status. First %@ is the newest release's version, second is the one running."
+    },
+    "Corvo %@ is the newest release.": {
+      "comment": "Update status when nothing newer exists. %@ is the running version."
+    },
+    "Corvo %@.": {
+      "comment": "Update status before any check has run. %@ is the running version."
+    },
     "Corvo Settings": {
       "comment": "Title of the Settings window."
     },
@@ -122,6 +146,9 @@
     },
     "Corvo will keep the newest ^[%lld clipping](inflect: true), whatever their age. Pinned and tagged clippings are never deleted. Corvo has no undo.": {
       "comment": "Confirmation body when only the count rule is on. %lld is the ceiling; the inflect markup makes the noun agree with it."
+    },
+    "Could not reach GitHub. Corvo %@.": {
+      "comment": "Update status when the check did not complete. Deliberately not phrased as an error: nothing is wrong with the app and there is nothing to fix. %@ is the running version."
     },
     "Could not save this tag. Nothing was changed.": {
       "comment": "Inline error next to the Save button when the write to the database failed."
@@ -464,6 +491,15 @@
     },
     "Unknown": {
       "comment": "Fallback shown on a card when the source app was not recorded."
+    },
+    "Update": {
+      "comment": "Button beside the gear in the panel, shown only when a newer release exists. Pressing it runs the upgrade."
+    },
+    "Update Corvo": {
+      "comment": "Accessibility label of that button."
+    },
+    "Updating quits Corvo and opens it again. macOS may ask for Accessibility permission afterwards: the new build is a different binary as far as it is concerned.": {
+      "comment": "Caption shown in Settings only while an update is available, before the user presses anything."
     },
     "What is this?": {
       "comment": "Placeholder in the notification's text field, where the user types the name."

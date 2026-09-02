@@ -156,6 +156,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // After the environment, because it reads the preference; before the
+        // hotkey, because neither depends on the other and this one is async
+        // anyway.
+        if let prefs = env?.prefs { UpdateModel.shared.start(prefs: prefs) }
+
         let registrar = GlobalHotkey { [weak self] in
             MainActor.assumeIsolated { self?.panel?.toggle() }
         }

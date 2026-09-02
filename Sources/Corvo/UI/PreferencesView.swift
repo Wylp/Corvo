@@ -76,6 +76,8 @@ struct PreferencesView: View {
     /// storing it would mean a user who once opened Ignored apps lands there
     /// forever, past the pane that says whether Corvo can paste at all.
     @State private var pane: Pane = .general
+    /// Shared, like the panel's gear reads it. See `UpdateModel`.
+    private var updateModel: UpdateModel { .shared }
 
     private enum Field { case items, days }
 
@@ -335,6 +337,74 @@ struct PreferencesView: View {
                     caption("Corvo is running with no icon and no shortcut. Opening Corvo again opens Settings.")
                 }
             }
+            updates
+        }
+    }
+
+    // MARK: - Updates
+
+    /// The one place in the app that turns a network connection on and off, so
+    /// the caption says what is sent rather than leaving the user to wonder.
+    @ViewBuilder private var updates: some View {
+        Toggle("Check for updates", isOn: checksForUpdates)
+        LabeledContent {
+            updateAction
+        } label: {
+            updateStatus
+        }
+        caption("Asks GitHub once a day whether a newer release exists. No clipping and nothing that identifies you is sent.")
+        if case .available = updateModel.state {
+            // Said before it happens, not after. Corvo has to quit for its own
+            // bundle to be replaced, and an app that vanishes with no warning
+            // reads as a crash.
+            caption("Updating quits Corvo and opens it again. macOS may ask for Accessibility permission afterwards: the new build is a different binary as far as it is concerned.")
+        }
+    }
+
+    /// Written out rather than passed as a method reference, for the reason
+    /// given on `launchAtLogin`: Swift 6.1's IRGen crashes building the
+    /// isolation thunk for a `@MainActor` method handed to `Binding`'s
+    /// non-isolated `set`.
+    private var checksForUpdates: Binding<Bool> {
+        Binding(get: { prefs.checksForUpdates }, set: { setChecksForUpdates($0) })
+    }
+
+    private func setChecksForUpdates(_ enabled: Bool) {
+        prefs.checksForUpdates = enabled
+        updateModel.checkIfEnabled(prefs: prefs)
+    }
+
+    @ViewBuilder private var updateStatus: some View {
+        switch updateModel.state {
+        case .available(let release):
+            notice("arrow.down.circle.fill", .blue,
+                   Text("Corvo \(release.version) is available. You have \(AppVersion.current)."))
+        case .checking:
+            caption("Checking…")
+        case .upToDate:
+            notice("checkmark.circle.fill", .green,
+                   Text("Corvo \(AppVersion.current) is the newest release."))
+        case .failed:
+            // Not a warning glyph. Nothing is wrong with Corvo, and there is
+            // nothing for the user to fix — the check simply did not complete.
+            caption("Could not reach GitHub. Corvo \(AppVersion.current).")
+        case .idle:
+            caption("Corvo \(AppVersion.current).")
+        }
+    }
+
+    /// The same action the panel's Update button runs, so the two cannot come to
+    /// mean different things by the same word. What it does depends on the
+    /// install — see `UpdateModel.install()`.
+    @ViewBuilder private var updateAction: some View {
+        switch updateModel.state {
+        case .available:
+            Button("Update") { updateModel.install() }
+                .controlSize(.small)
+        default:
+            Button("Check now") { updateModel.check() }
+                .controlSize(.small)
+                .disabled(!prefs.checksForUpdates)
         }
     }
 

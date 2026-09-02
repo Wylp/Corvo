@@ -17,7 +17,9 @@ typing in.
 
 A corvo is a raven: a bird that hoards small bright things and remembers where
 it put them. The app does the same with your clipboard. It lives in the menu
-bar, has no Dock icon, and never talks to the network.
+bar, has no Dock icon, and the only thing it ever sends over the network is a
+daily question to GitHub about whether a newer release exists — which you can
+switch off.
 
 ## What it does
 
@@ -245,7 +247,29 @@ Because tagged clippings never expire, think twice before writing a rule that
 tags credentials: it would keep them forever, in a database that is not
 encrypted.
 
-Nothing leaves your machine. Corvo has no network code, no account and no sync.
+**One connection leaves your machine, and you can switch it off.** Once a day
+Corvo asks GitHub's release API whether a newer version exists. It is a plain
+GET at a fixed URL that carries no clipping, no identifier and no account — the
+only thing it says about you is the version you are running, in the `User-Agent`
+header the API requires. **Settings → General → Check for updates** turns it
+off, and with it off Corvo opens no network connection at all.
+
+Corvo never installs anything **on its own**. When a release exists, an
+**Update** button appears beside the gear in the panel — only then — and
+pressing it runs the upgrade. Nothing happens until you press it.
+
+What it runs depends on how Corvo got here. Installed through Homebrew, it
+quits Corvo, runs `brew upgrade --cask corvo` and opens it again; the app has
+to be gone for its own bundle to be replaced, so it disappears for a few
+seconds on purpose. Installed by hand from the zip, there is no package manager
+to ask, and the button opens the release page instead.
+
+Expect macOS to want Accessibility permission again afterwards. An ad-hoc
+signed app has no stable identity, so the upgraded binary is a different app as
+far as the permission system is concerned — see
+[above](#accessibility-permission).
+
+There is no account and no sync.
 
 By default the history keeps **1000 clippings for 30 days**. Both numbers are
 adjustable in Settings, and each rule has its own switch, so you can keep a count
