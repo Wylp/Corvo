@@ -146,14 +146,17 @@ struct PreferencesView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(Pane.allCases, selection: $pane) { pane in
-                row(pane)
-            }
-            .navigationSplitViewColumnWidth(190)
-            // There is nothing to collapse to. Hiding the sidebar in a window
-            // whose entire navigation *is* the sidebar leaves a pane with no way
-            // back, and macOS puts the button there by default.
-            .toolbar(removing: .sidebarToggle)
+            sidebar
+                // Both, and the frame is the one that works: the modifier alone
+                // was ignored, because a `ScrollView` proposes no width of its
+                // own and the split view fell back to its minimum — which made
+                // the cards about 100pt wide and hyphenated "Ge-neral".
+                .frame(minWidth: 252)
+                .navigationSplitViewColumnWidth(252)
+                // There is nothing to collapse to. Hiding the sidebar in a
+                // window whose entire navigation *is* the sidebar leaves a pane
+                // with no way back, and macOS puts the button there by default.
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
                 // The window title follows the pane, which is what System
@@ -171,7 +174,7 @@ struct PreferencesView: View {
         // showing. Every pane shares one window, so the rest have space under
         // them — that is what a sidebar costs, and 460 spent it twice over.
         // A pane that does outgrow this scrolls; `Form` already does that.
-        .frame(width: 640, height: 380)
+        .frame(width: 680, height: 392)
         // Both retention fields format *and parse* through this, and the
         // confirmation's `^[…](inflect: true)` agrees its grammar against it.
         // Left alone on a pt-BR machine the field reads "1.000" and the alert
@@ -222,26 +225,125 @@ struct PreferencesView: View {
 
     // MARK: - Sidebar
 
-    /// One sidebar row: a tinted glyph tile and the pane's name.
+    /// A grid of cards rather than a list of rows.
     ///
-    /// The tile is a `Label` icon rather than a hand-placed `HStack` so the row
-    /// keeps the sidebar's own spacing, selection highlight and hit area — and
-    /// so VoiceOver reads it as one thing with the title, not as an image
-    /// followed by a word.
-    private func row(_ pane: Pane) -> some View {
-        Label {
-            Text(pane.title)
-        } icon: {
-            Image(systemName: pane.symbol)
-                // Fixed size rather than a text style: these sit inside a tile
-                // that does not grow, and a glyph scaled up by the system text
-                // size would clip out of it.
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 20, height: 20)
-                .background(pane.tint.gradient, in: RoundedRectangle(cornerRadius: 5))
+    /// The shape is Passwords', which is the macOS app that had the same problem
+    /// first: a handful of destinations, each of which is a *place* rather than
+    /// an item in a sequence, and none of which is read in order. A list implies
+    /// an order that five settings panes do not have; a grid says they are peers
+    /// and puts every one of them on screen at once, with no scroll and nothing
+    /// below the fold.
+    ///
+    /// The cost, and it is a real one: a `List` gives arrow-key navigation for
+    /// free and a grid of buttons does not. Tab still walks them and each is a
+    /// button with a label, so nothing is unreachable — but this is worse for
+    /// the keyboard than what it replaces, and that is the trade.
+    private var sidebar: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
+                                GridItem(.flexible(), spacing: 10)],
+                      spacing: 10) {
+                ForEach(Pane.allCases) { card($0) }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
         }
-        .padding(.vertical, 1)
+        .scrollIndicators(.never)
+    }
+
+    private func card(_ pane: Pane) -> some View {
+        let isSelected = self.pane == pane
+        return Button { self.pane = pane } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 4) {
+                    Image(systemName: pane.symbol)
+                        // Fixed size rather than a text style: these sit in a
+                        // circle that does not grow, and a glyph scaled up by
+                        // the system text size would clip out of it.
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 26, height: 26)
+                        // A circle here, where the list used a rounded square.
+                        // Both are Apple's; the circle is the one Passwords
+                        // uses, and at 26pt on a card it reads as an emblem
+                        // rather than as a shrunken app icon.
+                        .background(pane.tint.gradient, in: Circle())
+                    Spacer(minLength: 0)
+                    badge(for: pane, isSelected: isSelected)
+                }
+                Spacer(minLength: 6)
+                Text(pane.title)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
+            .background(isSelected ? AnyShapeStyle(Color.accentColor)
+                                   : AnyShapeStyle(.quaternary),
+                        in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// The corner Passwords fills with a count.
+    ///
+    /// Only where there is something true to put there, which is three of the
+    /// five. Passwords can badge every tile because every tile counts items;
+    /// these are settings, and two of them have no number. Inventing one — a
+    /// zero, a dash, the number of switches in the pane — would be decoration
+    /// standing where information stands on the other three, which is worse
+    /// than an empty corner.
+    @ViewBuilder private func badge(for pane: Pane, isSelected: Bool) -> some View {
+        switch pane {
+        case .shortcut:
+            // The binding itself, not a count of it. It is the one fact about
+            // this pane worth reading from outside, and the reason people open
+            // the window.
+            // `String(localized:)` and the recorder's own word. `?? "Off"`
+            // makes the whole expression a `String`, which reaches the `Text`
+            // initialiser that does not localize — the badge would have been
+            // English forever, and the catalog gate cannot see a string it
+            // never extracted.
+            badgeText(Text(shortcutState.hotkey?.display ?? String(localized: "None")),
+                      isSelected: isSelected)
+        case .ignored:
+            badgeText(Text(blockedCount, format: .number), isSelected: isSelected)
+        case .permissions:
+            // The one badge that is a state rather than a value, so it is a
+            // glyph and a colour — and white on the selected card, where the
+            // tint it would otherwise carry has nothing left to contrast with.
+            Image(systemName: hasAccessibility ? "checkmark.circle.fill"
+                                               : "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(isSelected ? AnyShapeStyle(.white)
+                                            : AnyShapeStyle(hasAccessibility ? Color.green : .orange))
+        case .general, .history:
+            EmptyView()
+        }
+    }
+
+    /// `.secondary` reads as dim grey on the accent fill, which is where it is
+    /// least legible and most needed — the selected card is the one being
+    /// looked at.
+    private func badgeText(_ text: Text, isSelected: Bool) -> some View {
+        text
+            .font(.caption.weight(.medium))
+            .monospacedDigit()
+            .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.85))
+                                        : AnyShapeStyle(.secondary))
+            .lineLimit(1)
+    }
+
+    /// The bundle ids that will actually block something, which is what the
+    /// pane is for — the rejected lines are named inside it and are not a count
+    /// of anything working.
+    private var blockedCount: Int {
+        Blocklist.parse(blocklistText).accepted.count
     }
 
     // MARK: - Panes
