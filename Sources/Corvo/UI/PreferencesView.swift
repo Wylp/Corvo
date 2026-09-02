@@ -722,12 +722,12 @@ struct PreferencesView: View {
                 caption("No apps ignored. Everything you copy is recorded.")
             }
             ForEach(blocked, id: \.self) { blockedRow($0) }
-            addRow
             HStack(spacing: 0) {
                 Button("Add app…") { addApp() }
                     .controlSize(.small)
                 Spacer(minLength: 0)
             }
+            typedRow
             caption("Nothing copied in these apps is kept.")
         }
         // On the section, not on a control inside it. It used to hang off the
@@ -810,24 +810,48 @@ struct PreferencesView: View {
 
     /// Typing an id by hand, kept because the picker cannot reach an app that is
     /// not installed on this Mac — which is exactly the app someone blocks
-    /// before the first copy from it exists. The last row of the list rather
-    /// than a control beside it, so the two ways in sit where the result will.
-    private var addRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "plus")
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-            TextField("Add a bundle ID", text: $newBundleId)
-                .textFieldStyle(.plain)
-                .font(.system(.body, design: .monospaced))
-                .onSubmit { blockTyped() }
+    /// before the first copy from it exists.
+    ///
+    /// It was the last row of the list, drawn as a plain field with a `+` in
+    /// front of it, and it read as a label: no border, nothing to aim at but
+    /// the placeholder, and a Return nobody was told about as the only way to
+    /// commit. A bordered field says it takes typing, and a button beside it
+    /// says what happens next — which is the whole of what was wrong with it.
+    private var typedRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                // `prompt:` for the example, `.labelsHidden()` for the label,
+                // and both are load-bearing. A `TextField`'s first argument is
+                // its *label*, and in a `Form` a label is drawn to the left of
+                // the control — so passing the example there put
+                // `com.example.app` outside the field, in grey, looking like a
+                // caption. The label still exists for VoiceOver, which needs a
+                // name for the field rather than an example of its contents.
+                //
+                // `Text(verbatim:)` keeps the example out of the String
+                // Catalog: it is a bundle id, and there is nothing in it to
+                // translate.
+                TextField("Bundle ID", text: $newBundleId,
+                          prompt: Text(verbatim: "com.example.app"))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .onSubmit { blockTyped() }
+                Button("Add") { blockTyped() }
+                    .controlSize(.small)
+                    .disabled(typedId.isEmpty)
+            }
+            caption("For an app that is not installed here.")
         }
     }
 
+    private var typedId: String {
+        newBundleId.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func blockTyped() {
-        let typed = newBundleId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !typed.isEmpty else { return }
-        block(typed)
+        guard !typedId.isEmpty else { return }
+        block(typedId)
         newBundleId = ""
     }
 

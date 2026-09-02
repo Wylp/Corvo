@@ -25,9 +25,6 @@
     "Add": {
       "comment": "Button that confirms the new tag in the tag sheet."
     },
-    "Add a bundle ID": {
-      "comment": "Placeholder of the last row of the ignored-apps list. Typing an id by hand is the only way to block an app that is not installed on this Mac."
-    },
     "Add a tag": {
       "comment": "Title of the sheet that ⌘T opens to put a tag on the selected clipping."
     },
@@ -69,6 +66,9 @@
     },
     "Blue": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
+    },
+    "Bundle ID": {
+      "comment": "Hidden label of the field for typing an id by hand. Not drawn — VoiceOver reads it, which needs a name for the field rather than the example shown inside it."
     },
     "Cancel": {
       "comment": "Button that dismisses the tag sheet or the rename sheet without changing anything."
@@ -197,6 +197,9 @@
     },
     "Every tag you have is already on this.": {
       "comment": "Shown in place of the tag list when nothing is left to add to the selection."
+    },
+    "For an app that is not installed here.": {
+      "comment": "Caption under that field. The app picker above can only reach installed apps."
     },
     "From app": {
       "comment": "Label of the tag editor field holding the source-app half of the rule."
