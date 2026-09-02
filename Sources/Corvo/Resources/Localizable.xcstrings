@@ -25,6 +25,9 @@
     "Add": {
       "comment": "Button that confirms the new tag in the tag sheet."
     },
+    "Add a bundle ID": {
+      "comment": "Placeholder of the last row of the ignored-apps list. Typing an id by hand is the only way to block an app that is not installed on this Mac."
+    },
     "Add a tag": {
       "comment": "Title of the sheet that ⌘T opens to put a tag on the selected clipping."
     },
@@ -61,8 +64,8 @@
     "Auto": {
       "comment": "Tag sheet filter: show only tags that carry a rule and apply themselves."
     },
-    "Blocks nothing — not a bundle ID: %@": {
-      "comment": "Warning under the blocklist. %@ is the quoted, comma-separated lines that are not bundle ids and are therefore enforcing nothing."
+    "Blocks nothing — not a bundle ID": {
+      "comment": "Shown under an entry that cannot match any app. It is kept rather than dropped, so the warning is still there tomorrow."
     },
     "Blue": {
       "comment": "Tag colour name. VoiceOver label of the colour swatch in the tag editor."
@@ -222,9 +225,6 @@
     "Ignored apps": {
       "comment": "Section title for the list of apps Corvo never records."
     },
-    "Ignored apps, one bundle ID per line": {
-      "comment": "VoiceOver label for the blocklist text editor."
-    },
     "Image unavailable": {
       "comment": "Shown on a card whose image file could not be read from disk."
     },
@@ -270,6 +270,9 @@
     "New tag": {
       "comment": "Title of the sheet that adds a tag to the selected item."
     },
+    "No apps ignored. Everything you copy is recorded.": {
+      "comment": "Shown in place of the ignored-apps list when it is empty."
+    },
     "No matches": {
       "comment": "Title shown when the search finds nothing."
     },
@@ -291,8 +294,14 @@
     "Not a valid pattern. Check the brackets and escapes.": {
       "comment": "Status under the pattern field when the regular expression does not compile."
     },
+    "Not installed — still blocked if it comes back": {
+      "comment": "Shown under an entry whose app is not on this Mac. The block outlives the app."
+    },
     "Not now": {
       "comment": "Alert button that dismisses the missing-permission alert without opening Settings."
+    },
+    "Nothing copied in these apps is kept.": {
+      "comment": "Caption under the ignored-apps list."
     },
     "Nothing here yet": {
       "comment": "Title shown when the history is empty."
@@ -316,9 +325,6 @@
     },
     "On this clipping": {
       "comment": "Label above the tags already attached to the one selected clipping."
-    },
-    "One bundle ID per line. Nothing copied in these apps is kept.": {
-      "comment": "Caption under the blocklist."
     },
     "Open Login Items": {
       "comment": "Button that opens System Settings at the Login Items list."
@@ -448,6 +454,12 @@
     },
     "Sources": {
       "comment": "Sidebar section listing the apps the clippings came from."
+    },
+    "Stop ignoring %@": {
+      "comment": "Accessibility label of that button. %@ is the app's name, or its bundle id when it is not installed."
+    },
+    "Stop ignoring this app": {
+      "comment": "Tooltip of the row's remove button."
     },
     "Tag": {
       "comment": "Key-hint label for Command-T, which tags the selected item."

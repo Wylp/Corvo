@@ -58,6 +58,9 @@ struct PreferencesView: View {
     /// See `setPastesOnConfirm`.
     @State private var pastesDraft: Bool
     @State private var blocklistText: String
+    /// The bundle id being typed into the list's last row. Its own state, not
+    /// part of `blocklistText`, so a half-typed id is not a stored entry.
+    @State private var newBundleId = ""
     @State private var loginError: String?
     @State private var isConfirmingCut = false
     /// The menu bar row, out of the body so it can be asked questions — and so it
@@ -700,55 +703,143 @@ struct PreferencesView: View {
 
     // MARK: - Ignored apps
 
+    /// A list of apps rather than a field of text.
+    ///
+    /// It was a `TextEditor` holding raw bundle ids, one per line, which asked
+    /// the reader to recognise `com.tinyspeck.slackmacgap` as Slack — and asked
+    /// them to delete a line to stop blocking something, in a control where a
+    /// stray keystroke silently unblocks an app. The ids are still what is
+    /// stored, because they are what `PasteboardMonitor` compares against; they
+    /// are no longer what you have to read.
+    ///
+    /// Each row resolves its own name and icon. An id with no app installed
+    /// keeps its row and says so: a blocklist outlives the apps in it, and an
+    /// entry that vanished because the app did would be a block the user thinks
+    /// they still have.
     private var ignoredApps: some View {
         Section {
-            TextEditor(text: $blocklistText)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .frame(height: 84)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 4)
-                .background(Color(nsColor: .textBackgroundColor),
-                            in: RoundedRectangle(cornerRadius: 6))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.primary.opacity(0.12))
-                }
-                // Committed on every keystroke, unlike the numbers above, and
-                // for the opposite reason: a half-typed bundle id blocks nothing
-                // and destroys nothing, while a bundle id lost because the field
-                // still had focus when the window closed is an app the user
-                // believes is blocked and is not.
-                .onChange(of: blocklistText) { _, text in
-                    prefs.blocklist = Blocklist.entries(text)
-                }
-                .accessibilityLabel("Ignored apps, one bundle ID per line")
-
+            if blocked.isEmpty {
+                caption("No apps ignored. Everything you copy is recorded.")
+            }
+            ForEach(blocked, id: \.self) { blockedRow($0) }
+            addRow
             HStack(spacing: 0) {
                 Button("Add app…") { addApp() }
                     .controlSize(.small)
                 Spacer(minLength: 0)
             }
-
-            if !rejected.isEmpty {
-                // Quoted, not bare: one of the ways to get this wrong is to put
-                // two ids on one line, and a comma-joined list of lines that may
-                // themselves contain commas cannot be read back.
-                //
-                // Not "ignored", either — in a section called "Ignored apps"
-                // that word already means blocked, and this line means the
-                // opposite.
-                notice("exclamationmark.triangle.fill", .orange,
-                       Text("Blocks nothing — not a bundle ID: \(quoted(rejected))"))
-            }
-            caption("One bundle ID per line. Nothing copied in these apps is kept.")
+            caption("Nothing copied in these apps is kept.")
+        }
+        // On the section, not on a control inside it. It used to hang off the
+        // `TextEditor` — the only thing that could change the list — and
+        // removing that control took the write with it, so unblocking an app
+        // would have looked right and stored nothing. Here it survives whatever
+        // the pane is made of next.
+        //
+        // Written on every change, unlike the retention numbers, and for the
+        // opposite reason: a half-typed bundle id blocks nothing and destroys
+        // nothing, while a bundle id lost because the window closed is an app
+        // the user believes is blocked and is not.
+        .onChange(of: blocklistText) { _, text in
+            prefs.blocklist = Blocklist.entries(text)
         }
     }
 
-    private var rejected: [String] { Blocklist.parse(blocklistText).rejected }
+    /// The stored ids, in the order they were added. Derived rather than held:
+    /// `blocklistText` is still the one place the pane's state lives, so adding
+    /// and removing cannot drift from what is written to `prefs`.
+    private var blocked: [String] { Blocklist.entries(blocklistText) }
 
-    private func quoted(_ lines: [String]) -> String {
-        lines.map { "“\($0)”" }.joined(separator: ", ")
+    private func blockedRow(_ id: String) -> some View {
+        let name = AppChooser.name(forBundleId: id)
+        let isValid = Blocklist.isValidBundleId(id)
+        return HStack(spacing: 8) {
+            // The warning takes the icon's place rather than sitting beside it:
+            // a line that is not a bundle id has no app and therefore no icon,
+            // and the slot is already the row's "what is this" column.
+            if isValid {
+                AppIcon.view(forBundleId: id)
+            } else {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .frame(width: 16)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name ?? id)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                secondLine(for: id, name: name, isValid: isValid)
+            }
+            Spacer(minLength: 4)
+            Button { unblock(id) } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Stop ignoring this app")
+            .accessibilityLabel("Stop ignoring \(name ?? id)")
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// What the row still has to say once the name is on the line above it.
+    ///
+    /// Three different things, and the id is only one of them — printing it
+    /// unconditionally would repeat the first line for an app that is not
+    /// installed, where the id *is* the name.
+    @ViewBuilder
+    private func secondLine(for id: String, name: String?, isValid: Bool) -> some View {
+        if !isValid {
+            Text("Blocks nothing — not a bundle ID")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        } else if let name, name != id {
+            // Mono for the same reason a clipping is set in mono: the shape of
+            // `com.apple.Terminal` is half of recognising it.
+            Text(id)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        } else {
+            Text("Not installed — still blocked if it comes back")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Typing an id by hand, kept because the picker cannot reach an app that is
+    /// not installed on this Mac — which is exactly the app someone blocks
+    /// before the first copy from it exists. The last row of the list rather
+    /// than a control beside it, so the two ways in sit where the result will.
+    private var addRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "plus")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            TextField("Add a bundle ID", text: $newBundleId)
+                .textFieldStyle(.plain)
+                .font(.system(.body, design: .monospaced))
+                .onSubmit { blockTyped() }
+        }
+    }
+
+    private func blockTyped() {
+        let typed = newBundleId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { return }
+        block(typed)
+        newBundleId = ""
+    }
+
+    /// Stored even when it is not a bundle id, which is the rule `Blocklist`
+    /// already documents: a typo dropped on the way in disappears from the
+    /// screen and leaves the user believing an app is blocked.
+    private func block(_ id: String) {
+        blocklistText = Blocklist.adding(id, to: blocklistText)
+    }
+
+    private func unblock(_ id: String) {
+        blocklistText = Blocklist.removing(id, from: blocklistText)
     }
 
     /// Picking the app is the point. A bundle id is not something anyone knows
