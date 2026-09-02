@@ -14,12 +14,34 @@ cask "corvo" do
 
   app "Corvo.app"
 
+  # Homebrew quarantines what it downloads, and Gatekeeper reads that flag to
+  # refuse the first launch of a bundle it cannot verify — which this one is:
+  # ad-hoc signed, no Developer ID, not notarized. Removing it here is a
+  # deliberate trade, not a tidy-up. It buys an app that opens, and it costs
+  # the warning that would have told you nobody vouched for this binary.
+  #
+  # The honest fix is notarization, which would make the flag harmless rather
+  # than something to strip. Until then this is stated in the caveats below
+  # instead of being done quietly.
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Corvo.app"]
+  end
+
   caveats <<~EOS
-    Corvo is not notarized. On first launch macOS will refuse to open it; go to
-    System Settings > Privacy & Security and click "Open Anyway".
+    Corvo is ad-hoc signed and not notarized. This cask removes the quarantine
+    flag after installing, so the app opens without the trip through System
+    Settings > Privacy & Security. That flag is how macOS warns you an app is
+    unverified, so what you get is the app launching and not that warning.
+    Build it from source instead if you would rather keep the check.
 
     Pasting straight into the app you came from needs Accessibility permission.
     Without it Corvo still copies to the clipboard.
+
+    Upgrading replaces the bundle, and an ad-hoc signed app changes identity
+    when it does. macOS may go on showing Corvo switched on under Accessibility
+    while the permission no longer applies to the new binary: select Corvo,
+    remove it with the minus button, then add it again.
   EOS
 
   zap trash: [
