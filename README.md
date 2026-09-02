@@ -4,8 +4,9 @@
 
 **A clipboard history for macOS that remembers where things came from.**
 
-Press `⌘⇧V`, pick a clipping, press `⏎`, and it lands back in whatever you were
-typing in.
+Press `⌘⇧V`, pick a clipping, press `⏎`, and it is on your clipboard. Switch on
+one setting and `⏎` puts it straight back into whatever you were typing in
+instead.
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
 ![Swift 6](https://img.shields.io/badge/Swift-6-orange)
@@ -30,7 +31,7 @@ switch off.
 | **Colours code like an editor** | `curl`, JSON and C-family snippets are syntax-highlighted in the card |
 | **Tags that apply themselves** | A tag can carry a regex and/or a source app, and catches matching clippings on its own |
 | **Asks what to call things** | A rule tag can ask you to name what it catches, in a notification you type into |
-| **Pastes straight back** | `⏎` returns the clipping to the app you were in, no manual `⌘V` |
+| **Pastes straight back** | Switch it on and `⏎` returns the clipping to the app you were in, no manual `⌘V` |
 | **Drops secrets on the floor** | Content marked concealed by password managers is never recorded |
 
 ## Install
@@ -68,9 +69,13 @@ see below.
 
 ### Accessibility permission
 
-The first time you paste, Corvo tells you the permission is missing and offers
-to open **System Settings → Privacy & Security → Accessibility**. Switch Corvo
-on there and paste again.
+**Only needed if you switch pasting on.** By default `⏎` puts the clipping on
+your clipboard and you place it yourself, which needs no permission at all —
+see [Keyboard](#keyboard) below.
+
+With pasting on, the first time you press `⏎` Corvo tells you the permission is
+missing and offers to open **System Settings → Privacy & Security →
+Accessibility**. Switch Corvo on there and press it again.
 
 It needs the permission to press `⌘V` for you in the app you came from; there is
 no other way for one app to type into another. Without it Corvo still works, it
@@ -114,8 +119,8 @@ so you never have to remember this table.
 | `←` `→` | Move through the carousel |
 | `⇧`-click | Select every clipping between this one and the last |
 | `⇧←` `⇧→` | The same, one clipping at a time |
-| `⏎` | Paste into the app you came from |
-| `⌘C` | Copy to the clipboard and stop there |
+| `⏎` | Copy the clipping — or paste it into the app you came from, if that is switched on |
+| `⌘C` | Copy to the clipboard, whichever `⏎` is set to do |
 | `⌘R` | Name the selected clipping (empty the field to remove the name) |
 | `⌘T` | Tag the selected clipping |
 | `⌘⇧T` | Open the tag manager |

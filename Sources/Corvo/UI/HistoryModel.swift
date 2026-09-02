@@ -79,8 +79,23 @@ final class HistoryModel {
         item.id.map(markedIds.contains) ?? false
     }
 
+    /// What confirming a clipping does. Mirrored here rather than read from
+    /// `Preferences` in the view, because `Preferences` is a typed view onto
+    /// `UserDefaults` and announces nothing — a body reading it directly would
+    /// go on drawing the old rail after the setting moved. `MenuBarIconModel`
+    /// exists for the same reason, and says more about it.
+    ///
+    /// Refreshed on every deliberate opening of the panel, which is the only
+    /// moment it can have changed: the switch is in Settings, and getting there
+    /// and back means the panel was closed and shown again.
+    private(set) var pastesOnConfirm: Bool
+
+    private let prefs: Preferences
+
     init(repo: ItemRepository, prefs: Preferences) {
         self.repo = repo
+        self.prefs = prefs
+        self.pastesOnConfirm = prefs.pastesOnConfirm
         self.tagger = AutoTagger(repo: repo, prefs: prefs)
         reload()
     }
@@ -236,6 +251,7 @@ final class HistoryModel {
     /// another method does on its way past is a reset that breaks the day that
     /// method stops doing it.
     func resetView() {
+        pastesOnConfirm = prefs.pastesOnConfirm
         if !query.isEmpty { query = "" }
         if selectedSource != nil { selectedSource = nil }
         if selectedTag != nil { selectedTag = nil }

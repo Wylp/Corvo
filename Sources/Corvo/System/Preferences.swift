@@ -44,6 +44,21 @@ final class Preferences {
         set { defaults.set(newValue, forKey: Self.showsMenuBarIconKey) }
     }
 
+    /// What ⏎, a double-click and ⌘1-9 do with a clipping.
+    ///
+    /// Absent means **false**: the clipping goes to the clipboard and the user
+    /// places it. That is the quieter of the two and the one that cannot go
+    /// wrong — it needs no Accessibility permission, so it keeps working after
+    /// an upgrade replaces the bundle and macOS stops recognising the binary,
+    /// which is something that happens to this app on every release.
+    ///
+    /// Switched on, Corvo presses ⌘V into the app you came from, which is what
+    /// the panel used to do with no way to ask it not to.
+    var pastesOnConfirm: Bool {
+        get { defaults.object(forKey: "pastesOnConfirm") as? Bool ?? false }
+        set { defaults.set(newValue, forKey: "pastesOnConfirm") }
+    }
+
     /// Whether Corvo asks GitHub what the newest release is, once a day.
     ///
     /// Absent means **true**, like `showsMenuBarIcon` above: a user who has

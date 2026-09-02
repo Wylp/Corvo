@@ -298,7 +298,7 @@ struct HistoryView: View {
                                     // selects a card, and the alternative pastes
                                     // one into whatever the user was last in.
                                     let clicks = NSApp.currentEvent?.clickCount ?? 1
-                                    guard clicks < 2 else { return onPaste([item]) }
+                                    guard clicks < 2 else { return confirm([item]) }
                                     model.select(index)
                                 }
                                 // ⇧-click, the way a range is selected in every
@@ -348,15 +348,26 @@ struct HistoryView: View {
     /// other just hands it to you.
     private var shortcutRail: some View {
         HStack(spacing: 14) {
-            KeycapHint(key: "⏎", label: "Paste")
-            KeycapHint(key: "⌘C", label: "Copy")
+            // Both labels follow the setting, because a rail that named the
+            // wrong verb would be worse than no rail: this is where a person
+            // looks to find out what ⏎ does, and it is the one key whose answer
+            // the user gets to change.
+            KeycapHint(key: "⏎", label: model.pastesOnConfirm ? "Paste" : "Copy")
+            // Dropped while ⏎ already copies, because it would be the same word
+            // twice. The key goes on working — this rail lists what you can do,
+            // and an alias for something already listed is not another thing to
+            // do.
+            if model.pastesOnConfirm {
+                KeycapHint(key: "⌘C", label: "Copy")
+            }
             // Third of the three ways out holding a clipping, so it sits with
             // the other two. The number is written on each card as well, and
             // that turned out not to be enough on its own: the rail is where a
             // person looks to find out what the keys do, and a shortcut absent
             // from it reads as one that does not exist. Being in both places
             // costs one hint in a row that has the room.
-            KeycapHint(key: "⌘1-9", label: "Paste that card")
+            KeycapHint(key: "⌘1-9",
+                       label: model.pastesOnConfirm ? "Paste that card" : "Copy that card")
             // Third because it changes what the first two act on, so it reads
             // as a qualifier of them rather than another thing to do — and the
             // label has to say so. Every other hint in this rail names a key
@@ -423,8 +434,7 @@ struct HistoryView: View {
             // on. Copying a card is what the panel is open for; copying the
             // query back out of the search box is not.
             shortcutButton("c", modifiers: .command) {
-                guard !model.selectedItems.isEmpty else { return }
-                onCopy(model.selectedItems)
+                copy(model.selectedItems)
             }
             // ⌘⌫, not a bare ⌫: the search field holds focus while the panel is
             // open, so an unmodified Delete either steals backspace from the
@@ -467,7 +477,7 @@ struct HistoryView: View {
             ForEach(1...HistoryModel.numberedCards, id: \.self) { number in
                 shortcutButton(KeyEquivalent(Character("\(number)")), modifiers: .command) {
                     guard let item = model.item(atNumber: number) else { return }
-                    onPaste([item])
+                    confirm([item])
                 }
             }
         }
@@ -956,9 +966,33 @@ struct HistoryView: View {
         model.arrow(step, extending: NSEvent.modifierFlags.contains(.shift))
     }
 
+    /// Every way of confirming a clipping goes through here: ⏎, a double-click,
+    /// ⌘1-9, and Return in the search field.
+    ///
+    /// One funnel and not four call sites choosing for themselves, because the
+    /// setting that decides this is one the user can move — and four places
+    /// reading it is four places for one of them to go on pasting after the
+    /// switch said not to.
+    private func confirm(_ items: [ClipItem]) {
+        guard !items.isEmpty else { return }
+        guard model.pastesOnConfirm else { return copy(items) }
+        onPaste(items)
+    }
+
+    /// The clipboard, and the confirmation that it happened.
+    ///
+    /// The panel is gone by the time this returns, so the HUD is the only thing
+    /// that can say the copy worked — without it, copying and the panel simply
+    /// ignoring the key look exactly the same.
+    private func copy(_ items: [ClipItem]) {
+        guard !items.isEmpty else { return }
+        onCopy(items)
+        ActionHUD.shared.show(items.count > 1 ? "Copied \(items.count) clippings"
+                                              : "Copied", icon: "doc.on.clipboard")
+    }
+
     private func pasteSelected() {
-        guard !model.selectedItems.isEmpty else { return }
-        onPaste(model.selectedItems)
+        confirm(model.selectedItems)
     }
 
     /// Reads the selection through `selectedItem`, the model's own bounds-checked

@@ -55,6 +55,8 @@ struct PreferencesView: View {
     /// a cut and has to reach the confirmation before it reaches `prefs`.
     @State private var limitsItems: Bool
     @State private var limitsAge: Bool
+    /// See `setPastesOnConfirm`.
+    @State private var pastesDraft: Bool
     @State private var blocklistText: String
     @State private var loginError: String?
     @State private var isConfirmingCut = false
@@ -136,6 +138,7 @@ struct PreferencesView: View {
         _maxAgeDays = State(initialValue: prefs.maxAgeDays)
         _limitsItems = State(initialValue: prefs.limitsItems)
         _limitsAge = State(initialValue: prefs.limitsAge)
+        _pastesDraft = State(initialValue: prefs.pastesOnConfirm)
         _blocklistText = State(initialValue: prefs.blocklist.joined(separator: "\n"))
         _menuBarIcon = StateObject(wrappedValue: MenuBarIconModel(prefs: prefs))
         _shortcutState = State(initialValue: ShortcutState(hotkey: prefs.hotkey))
@@ -325,6 +328,17 @@ struct PreferencesView: View {
                 notice("exclamationmark.triangle.fill", .red,
                        Text("macOS refused the change: \(loginError)"))
             }
+            Toggle("Paste into the app you came from", isOn: pastesOnConfirm)
+            if pastesDraft, !hasAccessibility {
+                // The one setting in this window whose promise another screen
+                // can break. Saying so here is cheaper than the user finding out
+                // by pressing ⏎ and watching nothing arrive.
+                notice("exclamationmark.triangle.fill", .orange,
+                       Text("Needs Accessibility permission, which is not granted yet."))
+            }
+            caption(pastesDraft
+                    ? "⏎ and a double-click press ⌘V for you in the app you were last in."
+                    : "⏎ and a double-click put the clipping on your clipboard, and you paste it. ⌘C does the same.")
             Toggle("Show icon in menu bar", isOn: showsMenuBarIcon)
             if !menuBarIcon.isShown {
                 // Not a warning: the user asked for this and Corvo is working
@@ -415,6 +429,24 @@ struct PreferencesView: View {
     /// Written out rather than passed as a method reference for the reason given
     /// on `launchAtLogin`: Swift 6.1's IRGen crashes building the isolation thunk
     /// for a `@MainActor` method handed to `Binding`'s non-isolated `set`.
+    /// Written out rather than passed as a method reference, for the reason
+    /// given on `launchAtLogin`: Swift 6.1's IRGen crashes building the
+    /// isolation thunk for a `@MainActor` method handed to `Binding`'s
+    /// non-isolated `set`.
+    private var pastesOnConfirm: Binding<Bool> {
+        Binding(get: { pastesDraft }, set: { setPastesOnConfirm($0) })
+    }
+
+    /// Mirrored into `@State` and written through, rather than read from `prefs`
+    /// in the body. `Preferences` is a typed view onto `UserDefaults` and
+    /// announces nothing, so a body reading it directly would draw the caption
+    /// for the setting that was there a moment ago — the exact failure
+    /// `MenuBarIconModel` was built to stop for the row two lines down.
+    private func setPastesOnConfirm(_ enabled: Bool) {
+        pastesDraft = enabled
+        prefs.pastesOnConfirm = enabled
+    }
+
     private var showsMenuBarIcon: Binding<Bool> {
         Binding(get: { menuBarIcon.isShown }, set: { menuBarIcon.request($0) })
     }
