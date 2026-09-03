@@ -557,7 +557,11 @@ final class HistoryModel {
 
     func delete(_ item: ClipItem) {
         guard let id = item.id else { return }
-        try? repo.delete(id)
+
+        let idsToDelete = markedIds.union([id])
+        idsToDelete.forEach { id in
+            try? repo.delete(id)
+        }
         reload()
     }
 
