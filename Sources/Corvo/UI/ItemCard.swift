@@ -384,13 +384,19 @@ struct ItemCard: View {
 
     private var tagRow: some View {
         HStack(spacing: 4) {
+            // Same resolver the tag strip already reads through: a tag with a
+            // colour keeps it on the card, not just at the top of the panel.
+            // The accent fallback matches what a tag with no colour drew
+            // before this existed, so a card full of uncoloured tags is
+            // unchanged.
             ForEach(tags) { tag in
                 Text(tag.name)
                     .font(.caption2)
                     .lineLimit(1)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.18), in: Capsule())
+                    .background((TagColor.named(tag.color)?.color ?? .accentColor).opacity(0.18),
+                                in: Capsule())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
