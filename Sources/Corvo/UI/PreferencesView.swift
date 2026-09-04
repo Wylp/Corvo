@@ -58,6 +58,9 @@ struct PreferencesView: View {
     /// See `setPastesOnConfirm`.
     @State private var pastesDraft: Bool
     @State private var blocklistText: String
+    /// The bundle id being typed into the list's last row. Its own state, not
+    /// part of `blocklistText`, so a half-typed id is not a stored entry.
+    @State private var newBundleId = ""
     @State private var loginError: String?
     @State private var isConfirmingCut = false
     /// The menu bar row, out of the body so it can be asked questions — and so it
@@ -146,14 +149,17 @@ struct PreferencesView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(Pane.allCases, selection: $pane) { pane in
-                row(pane)
-            }
-            .navigationSplitViewColumnWidth(190)
-            // There is nothing to collapse to. Hiding the sidebar in a window
-            // whose entire navigation *is* the sidebar leaves a pane with no way
-            // back, and macOS puts the button there by default.
-            .toolbar(removing: .sidebarToggle)
+            sidebar
+                // Both, and the frame is the one that works: the modifier alone
+                // was ignored, because a `ScrollView` proposes no width of its
+                // own and the split view fell back to its minimum — which made
+                // the cards about 100pt wide and hyphenated "Ge-neral".
+                .frame(minWidth: 252)
+                .navigationSplitViewColumnWidth(252)
+                // There is nothing to collapse to. Hiding the sidebar in a
+                // window whose entire navigation *is* the sidebar leaves a pane
+                // with no way back, and macOS puts the button there by default.
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
                 // The window title follows the pane, which is what System
@@ -171,7 +177,7 @@ struct PreferencesView: View {
         // showing. Every pane shares one window, so the rest have space under
         // them — that is what a sidebar costs, and 460 spent it twice over.
         // A pane that does outgrow this scrolls; `Form` already does that.
-        .frame(width: 640, height: 380)
+        .frame(width: 680, height: 392)
         // Both retention fields format *and parse* through this, and the
         // confirmation's `^[…](inflect: true)` agrees its grammar against it.
         // Left alone on a pt-BR machine the field reads "1.000" and the alert
@@ -222,26 +228,125 @@ struct PreferencesView: View {
 
     // MARK: - Sidebar
 
-    /// One sidebar row: a tinted glyph tile and the pane's name.
+    /// A grid of cards rather than a list of rows.
     ///
-    /// The tile is a `Label` icon rather than a hand-placed `HStack` so the row
-    /// keeps the sidebar's own spacing, selection highlight and hit area — and
-    /// so VoiceOver reads it as one thing with the title, not as an image
-    /// followed by a word.
-    private func row(_ pane: Pane) -> some View {
-        Label {
-            Text(pane.title)
-        } icon: {
-            Image(systemName: pane.symbol)
-                // Fixed size rather than a text style: these sit inside a tile
-                // that does not grow, and a glyph scaled up by the system text
-                // size would clip out of it.
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 20, height: 20)
-                .background(pane.tint.gradient, in: RoundedRectangle(cornerRadius: 5))
+    /// The shape is Passwords', which is the macOS app that had the same problem
+    /// first: a handful of destinations, each of which is a *place* rather than
+    /// an item in a sequence, and none of which is read in order. A list implies
+    /// an order that five settings panes do not have; a grid says they are peers
+    /// and puts every one of them on screen at once, with no scroll and nothing
+    /// below the fold.
+    ///
+    /// The cost, and it is a real one: a `List` gives arrow-key navigation for
+    /// free and a grid of buttons does not. Tab still walks them and each is a
+    /// button with a label, so nothing is unreachable — but this is worse for
+    /// the keyboard than what it replaces, and that is the trade.
+    private var sidebar: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
+                                GridItem(.flexible(), spacing: 10)],
+                      spacing: 10) {
+                ForEach(Pane.allCases) { card($0) }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
         }
-        .padding(.vertical, 1)
+        .scrollIndicators(.never)
+    }
+
+    private func card(_ pane: Pane) -> some View {
+        let isSelected = self.pane == pane
+        return Button { self.pane = pane } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 4) {
+                    Image(systemName: pane.symbol)
+                        // Fixed size rather than a text style: these sit in a
+                        // circle that does not grow, and a glyph scaled up by
+                        // the system text size would clip out of it.
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 26, height: 26)
+                        // A circle here, where the list used a rounded square.
+                        // Both are Apple's; the circle is the one Passwords
+                        // uses, and at 26pt on a card it reads as an emblem
+                        // rather than as a shrunken app icon.
+                        .background(pane.tint.gradient, in: Circle())
+                    Spacer(minLength: 0)
+                    badge(for: pane, isSelected: isSelected)
+                }
+                Spacer(minLength: 6)
+                Text(pane.title)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
+            .background(isSelected ? AnyShapeStyle(Color.accentColor)
+                                   : AnyShapeStyle(.quaternary),
+                        in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// The corner Passwords fills with a count.
+    ///
+    /// Only where there is something true to put there, which is three of the
+    /// five. Passwords can badge every tile because every tile counts items;
+    /// these are settings, and two of them have no number. Inventing one — a
+    /// zero, a dash, the number of switches in the pane — would be decoration
+    /// standing where information stands on the other three, which is worse
+    /// than an empty corner.
+    @ViewBuilder private func badge(for pane: Pane, isSelected: Bool) -> some View {
+        switch pane {
+        case .shortcut:
+            // The binding itself, not a count of it. It is the one fact about
+            // this pane worth reading from outside, and the reason people open
+            // the window.
+            // `String(localized:)` and the recorder's own word. `?? "Off"`
+            // makes the whole expression a `String`, which reaches the `Text`
+            // initialiser that does not localize — the badge would have been
+            // English forever, and the catalog gate cannot see a string it
+            // never extracted.
+            badgeText(Text(shortcutState.hotkey?.display ?? String(localized: "None")),
+                      isSelected: isSelected)
+        case .ignored:
+            badgeText(Text(blockedCount, format: .number), isSelected: isSelected)
+        case .permissions:
+            // The one badge that is a state rather than a value, so it is a
+            // glyph and a colour — and white on the selected card, where the
+            // tint it would otherwise carry has nothing left to contrast with.
+            Image(systemName: hasAccessibility ? "checkmark.circle.fill"
+                                               : "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(isSelected ? AnyShapeStyle(.white)
+                                            : AnyShapeStyle(hasAccessibility ? Color.green : .orange))
+        case .general, .history:
+            EmptyView()
+        }
+    }
+
+    /// `.secondary` reads as dim grey on the accent fill, which is where it is
+    /// least legible and most needed — the selected card is the one being
+    /// looked at.
+    private func badgeText(_ text: Text, isSelected: Bool) -> some View {
+        text
+            .font(.caption.weight(.medium))
+            .monospacedDigit()
+            .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.85))
+                                        : AnyShapeStyle(.secondary))
+            .lineLimit(1)
+    }
+
+    /// The bundle ids that will actually block something, which is what the
+    /// pane is for — the rejected lines are named inside it and are not a count
+    /// of anything working.
+    private var blockedCount: Int {
+        Blocklist.parse(blocklistText).accepted.count
     }
 
     // MARK: - Panes
@@ -598,55 +703,167 @@ struct PreferencesView: View {
 
     // MARK: - Ignored apps
 
+    /// A list of apps rather than a field of text.
+    ///
+    /// It was a `TextEditor` holding raw bundle ids, one per line, which asked
+    /// the reader to recognise `com.tinyspeck.slackmacgap` as Slack — and asked
+    /// them to delete a line to stop blocking something, in a control where a
+    /// stray keystroke silently unblocks an app. The ids are still what is
+    /// stored, because they are what `PasteboardMonitor` compares against; they
+    /// are no longer what you have to read.
+    ///
+    /// Each row resolves its own name and icon. An id with no app installed
+    /// keeps its row and says so: a blocklist outlives the apps in it, and an
+    /// entry that vanished because the app did would be a block the user thinks
+    /// they still have.
     private var ignoredApps: some View {
         Section {
-            TextEditor(text: $blocklistText)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .frame(height: 84)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 4)
-                .background(Color(nsColor: .textBackgroundColor),
-                            in: RoundedRectangle(cornerRadius: 6))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.primary.opacity(0.12))
-                }
-                // Committed on every keystroke, unlike the numbers above, and
-                // for the opposite reason: a half-typed bundle id blocks nothing
-                // and destroys nothing, while a bundle id lost because the field
-                // still had focus when the window closed is an app the user
-                // believes is blocked and is not.
-                .onChange(of: blocklistText) { _, text in
-                    prefs.blocklist = Blocklist.entries(text)
-                }
-                .accessibilityLabel("Ignored apps, one bundle ID per line")
-
+            if blocked.isEmpty {
+                caption("No apps ignored. Everything you copy is recorded.")
+            }
+            ForEach(blocked, id: \.self) { blockedRow($0) }
             HStack(spacing: 0) {
                 Button("Add app…") { addApp() }
                     .controlSize(.small)
                 Spacer(minLength: 0)
             }
-
-            if !rejected.isEmpty {
-                // Quoted, not bare: one of the ways to get this wrong is to put
-                // two ids on one line, and a comma-joined list of lines that may
-                // themselves contain commas cannot be read back.
-                //
-                // Not "ignored", either — in a section called "Ignored apps"
-                // that word already means blocked, and this line means the
-                // opposite.
-                notice("exclamationmark.triangle.fill", .orange,
-                       Text("Blocks nothing — not a bundle ID: \(quoted(rejected))"))
-            }
-            caption("One bundle ID per line. Nothing copied in these apps is kept.")
+            typedRow
+            caption("Nothing copied in these apps is kept.")
+        }
+        // On the section, not on a control inside it. It used to hang off the
+        // `TextEditor` — the only thing that could change the list — and
+        // removing that control took the write with it, so unblocking an app
+        // would have looked right and stored nothing. Here it survives whatever
+        // the pane is made of next.
+        //
+        // Written on every change, unlike the retention numbers, and for the
+        // opposite reason: a half-typed bundle id blocks nothing and destroys
+        // nothing, while a bundle id lost because the window closed is an app
+        // the user believes is blocked and is not.
+        .onChange(of: blocklistText) { _, text in
+            prefs.blocklist = Blocklist.entries(text)
         }
     }
 
-    private var rejected: [String] { Blocklist.parse(blocklistText).rejected }
+    /// The stored ids, in the order they were added. Derived rather than held:
+    /// `blocklistText` is still the one place the pane's state lives, so adding
+    /// and removing cannot drift from what is written to `prefs`.
+    private var blocked: [String] { Blocklist.entries(blocklistText) }
 
-    private func quoted(_ lines: [String]) -> String {
-        lines.map { "“\($0)”" }.joined(separator: ", ")
+    private func blockedRow(_ id: String) -> some View {
+        let name = AppChooser.name(forBundleId: id)
+        let isValid = Blocklist.isValidBundleId(id)
+        return HStack(spacing: 8) {
+            // The warning takes the icon's place rather than sitting beside it:
+            // a line that is not a bundle id has no app and therefore no icon,
+            // and the slot is already the row's "what is this" column.
+            if isValid {
+                AppIcon.view(forBundleId: id)
+            } else {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .frame(width: 16)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name ?? id)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                secondLine(for: id, name: name, isValid: isValid)
+            }
+            Spacer(minLength: 4)
+            Button { unblock(id) } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Stop ignoring this app")
+            .accessibilityLabel("Stop ignoring \(name ?? id)")
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// What the row still has to say once the name is on the line above it.
+    ///
+    /// Three different things, and the id is only one of them — printing it
+    /// unconditionally would repeat the first line for an app that is not
+    /// installed, where the id *is* the name.
+    @ViewBuilder
+    private func secondLine(for id: String, name: String?, isValid: Bool) -> some View {
+        if !isValid {
+            Text("Blocks nothing — not a bundle ID")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        } else if let name, name != id {
+            // Mono for the same reason a clipping is set in mono: the shape of
+            // `com.apple.Terminal` is half of recognising it.
+            Text(id)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        } else {
+            Text("Not installed — still blocked if it comes back")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Typing an id by hand, kept because the picker cannot reach an app that is
+    /// not installed on this Mac — which is exactly the app someone blocks
+    /// before the first copy from it exists.
+    ///
+    /// It was the last row of the list, drawn as a plain field with a `+` in
+    /// front of it, and it read as a label: no border, nothing to aim at but
+    /// the placeholder, and a Return nobody was told about as the only way to
+    /// commit. A bordered field says it takes typing, and a button beside it
+    /// says what happens next — which is the whole of what was wrong with it.
+    private var typedRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                // `prompt:` for the example, `.labelsHidden()` for the label,
+                // and both are load-bearing. A `TextField`'s first argument is
+                // its *label*, and in a `Form` a label is drawn to the left of
+                // the control — so passing the example there put
+                // `com.example.app` outside the field, in grey, looking like a
+                // caption. The label still exists for VoiceOver, which needs a
+                // name for the field rather than an example of its contents.
+                //
+                // `Text(verbatim:)` keeps the example out of the String
+                // Catalog: it is a bundle id, and there is nothing in it to
+                // translate.
+                TextField("Bundle ID", text: $newBundleId,
+                          prompt: Text(verbatim: "com.example.app"))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .onSubmit { blockTyped() }
+                Button("Add") { blockTyped() }
+                    .controlSize(.small)
+                    .disabled(typedId.isEmpty)
+            }
+            caption("For an app that is not installed here.")
+        }
+    }
+
+    private var typedId: String {
+        newBundleId.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func blockTyped() {
+        guard !typedId.isEmpty else { return }
+        block(typedId)
+        newBundleId = ""
+    }
+
+    /// Stored even when it is not a bundle id, which is the rule `Blocklist`
+    /// already documents: a typo dropped on the way in disappears from the
+    /// screen and leaves the user believing an app is blocked.
+    private func block(_ id: String) {
+        blocklistText = Blocklist.adding(id, to: blocklistText)
+    }
+
+    private func unblock(_ id: String) {
+        blocklistText = Blocklist.removing(id, from: blocklistText)
     }
 
     /// Picking the app is the point. A bundle id is not something anyone knows

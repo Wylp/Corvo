@@ -248,6 +248,28 @@ enum Blocklist {
     /// on this machine — collapse into one entry that matches no bundle id,
     /// silently switching off every block in it. `isNewline` also covers a bare
     /// `"\r"`.
+    /// The stored text with `id` on the end, or unchanged when it is already
+    /// there.
+    ///
+    /// Out of the view for the reason the rest of this type is: the pane stopped
+    /// being a text field the user edits and became a list with an add and a
+    /// remove, and two operations that decide what gets stored are two rules —
+    /// not two lines of a SwiftUI body.
+    ///
+    /// A duplicate is dropped silently rather than reported: the app is already
+    /// blocked, so there is nothing to fix and nothing changed.
+    static func adding(_ id: String, to text: String) -> String {
+        let current = entries(text)
+        guard !current.contains(id) else { return text }
+        return (current + [id]).joined(separator: "\n")
+    }
+
+    /// Every other entry, in the order they were in. Removing the one that is
+    /// not there is not an error — the row it belonged to is already gone.
+    static func removing(_ id: String, from text: String) -> String {
+        entries(text).filter { $0 != id }.joined(separator: "\n")
+    }
+
     static func entries(_ text: String) -> [String] {
         var seen = Set<String>()
         return text.split(whereSeparator: \.isNewline)
