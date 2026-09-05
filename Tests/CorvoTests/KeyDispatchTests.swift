@@ -23,6 +23,7 @@ import Testing
     // The positive control. Without it a silent harness that delivers nothing
     // would make every assertion below pass by never firing anything.
     #expect(model.selectedIndex == 0)
+    press(.downArrow, in: window)
     press(.rightArrow, in: window)
     #expect(model.selectedIndex == 1, "a bare arrow does not even reach the panel")
 
@@ -91,6 +92,7 @@ import Testing
 @MainActor
 private final class PasteBox {
     var pasted: [ClipItem] = []
+    var copied: [ClipItem] = []
     /// ⌘, asked for Settings. A count and not a flag, so a shortcut that fires
     /// twice for one press is not read as working.
     var settingsOpened = 0
@@ -127,7 +129,7 @@ private func panelUnderTest(pastesOnConfirm: Bool = false)
                          styleMask: [.nonactivatingPanel], backing: .buffered, defer: false)
     window.contentView = NSHostingView(rootView: HistoryView(
         model: model, blobs: blobs,
-        onPaste: { box.pasted = $0 }, onCopy: { _ in },
+        onPaste: { box.pasted = $0 }, onCopy: { box.copied = $0 },
         onOpenSettings: { box.settingsOpened += 1 }))
     window.makeKeyAndOrderFront(nil)
     settle()
@@ -136,12 +138,15 @@ private func panelUnderTest(pastesOnConfirm: Bool = false)
 
 /// The keys this panel binds, by the code and character AppKit sends for them.
 private enum Key {
-    case leftArrow, rightArrow, character(Character)
+    case leftArrow, rightArrow, upArrow, downArrow, delete, character(Character)
 
     var code: UInt16 {
         switch self {
         case .leftArrow: return 123
         case .rightArrow: return 124
+        case .upArrow: return 126
+        case .downArrow: return 125
+        case .delete: return 51
         // kVK_ANSI_*. A wrong code is a press that lands on another key, so
         // these are named rather than derived.
         case .character(let c):
@@ -149,6 +154,7 @@ private enum Key {
             case "1": return 18
             case "2": return 19
             case ",": return 43
+            case "c": return 8
             default:
                 Issue.record("no keyCode for \(c) — add it")
                 return 0
@@ -160,9 +166,51 @@ private enum Key {
         switch self {
         case .leftArrow: return String(UnicodeScalar(UInt32(0xF702))!)
         case .rightArrow: return String(UnicodeScalar(UInt32(0xF703))!)
+        case .upArrow: return String(UnicodeScalar(UInt32(0xF700))!)
+        case .downArrow: return String(UnicodeScalar(UInt32(0xF701))!)
+        case .delete: return "\u{7f}"
         case .character(let c): return String(c)
         }
     }
+}
+
+@Test @MainActor func searchEditingDoesNotDeleteClippingsAndArrowsTransferFocus() throws {
+    let (model, window, _, dir, box) = try panelUnderTest()
+    defer { window.orderOut(nil); try? FileManager.default.removeItem(at: dir) }
+    let originalIds = model.items.map(\.id)
+    model.query = "clipping"
+    settle()
+    let editor = try #require(window.firstResponder as? NSTextView)
+    editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+    press(.leftArrow, in: window)
+    #expect(model.selectedIndex == 0)
+    #expect(editor.selectedRange().location == 7)
+    editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+    press(.character("c"), modifiers: .command, in: window)
+    #expect(box.copied.isEmpty, "copy in search must not copy a clipping")
+    press(.delete, modifiers: .command, in: window)
+    #expect(model.query.isEmpty)
+    #expect(model.items.map(\.id) == originalIds)
+
+    press(.downArrow, in: window)
+    press(.rightArrow, in: window)
+    #expect(model.selectedIndex == 1)
+    press(.character("c"), modifiers: .command, in: window)
+    #expect(box.copied.map(\.id) == [model.selectedItem?.id])
+    let deletedId = model.selectedItem?.id
+    press(.delete, modifiers: .command, in: window)
+    #expect(model.items.count == 5)
+    #expect(!model.items.contains { $0.id == deletedId })
+    press(.upArrow, in: window)
+    #expect(window.firstResponder is NSTextView)
+    press(.delete, modifiers: .command, in: window)
+    #expect(model.items.count == 5)
+    press(.downArrow, in: window)
+    model.resetView()
+    settle()
+    #expect(window.firstResponder is NSTextView, "reopening must restore search focus")
+    press(.delete, modifiers: .command, in: window)
+    #expect(model.items.count == 5)
 }
 
 @MainActor
@@ -178,7 +226,19 @@ private func press(_ key: Key, modifiers: NSEvent.ModifierFlags = [], in window:
     }
     // A ⌘ press is a key equivalent and never arrives as an ordinary keyDown;
     // everything else does. Trying both in this order is what a window does.
-    if !window.performKeyEquivalent(with: event) { window.sendEvent(event) }
+    // AppKit normalizes backspace to NSBackspaceCharacter for key-equivalent
+    // matching; the field editor receives NSDeleteCharacter in keyDown.
+    let equivalent: NSEvent
+    if key.code == 51, modifiers.contains(.command) {
+        equivalent = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: modifiers,
+            timestamp: event.timestamp, windowNumber: window.windowNumber, context: nil,
+            characters: "\u{8}", charactersIgnoringModifiers: "\u{8}",
+            isARepeat: false, keyCode: 51)!
+    } else {
+        equivalent = event
+    }
+    if !window.performKeyEquivalent(with: equivalent) { window.sendEvent(event) }
     settle()
 }
 

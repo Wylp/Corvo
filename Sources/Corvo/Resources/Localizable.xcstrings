@@ -1,6 +1,10 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "↑": { "comment": "Up-arrow keycap for returning to search." },
+    "↓": { "comment": "Down-arrow keycap for browsing clippings." },
+    "Search": { "comment": "Keyboard hint: move focus from clippings back to the search field." },
+    "Browse clippings": { "comment": "Keyboard hint: move focus from search down to the clipping cards." },
     "%@ is in use by another app. Still no shortcut.": {
       "comment": "Warning under the shortcut row when the system refused the combination and the user had already cleared the shortcut, so nothing is bound. %@ is the one they wanted."
     },
