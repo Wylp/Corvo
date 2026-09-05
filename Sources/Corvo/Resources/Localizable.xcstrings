@@ -1,6 +1,15 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Limit history size": { "comment": "Toggle for the maximum number of unprotected clippings." },
+    "Delete older clippings": { "comment": "Toggle for automatic expiry of unprotected clippings." },
+    "No count limit": { "comment": "Status when the history count rule is disabled." },
+    "No automatic expiry": { "comment": "Status when the history age rule is disabled." },
+    "Keeps up to %lld clippings and removes those older than %lld days.": { "comment": "Summary when both retention rules are enabled; count then age in days." },
+    "Keeps up to %lld clippings, with no automatic expiry.": { "comment": "Summary when only the count rule is enabled." },
+    "Removes clippings older than %lld days, with no count limit.": { "comment": "Summary when only the age rule is enabled." },
+    "History stays until you delete it.": { "comment": "Summary when both retention rules are disabled." },
+    "Pinned, tagged and named clippings never expire and do not count towards the limit.": { "comment": "Explains which clippings are protected from both retention rules." },
     "%@ is in use by another app. Still no shortcut.": {
       "comment": "Warning under the shortcut row when the system refused the combination and the user had already cleared the shortcut, so nothing is bound. %@ is the one they wanted."
     },
