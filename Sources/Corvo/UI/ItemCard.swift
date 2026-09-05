@@ -390,7 +390,8 @@ struct ItemCard: View {
                     .lineLimit(1)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.18), in: Capsule())
+                    .background((TagColor.named(tag.color)?.color ?? .accentColor).opacity(0.18),
+                                in: Capsule())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
