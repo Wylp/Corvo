@@ -116,16 +116,17 @@ so you never have to remember this table.
 | Key | Does |
 | --- | --- |
 | `⌘⇧V` | Open the panel, from anywhere — the default, changeable in Settings |
-| `←` `→` | Move through the carousel |
+| `↓` / `↑` | Move focus from search to cards / back to search |
+| `←` `→` | Edit the search cursor, or move through the carousel when cards have focus |
 | `⇧`-click | Select every clipping between this one and the last |
 | `⇧←` `⇧→` | The same, one clipping at a time |
 | `⏎` | Copy the clipping — or paste it into the app you came from, if that is switched on |
-| `⌘C` | Copy to the clipboard, whichever `⏎` is set to do |
+| `⌘C` | Copy search text while editing; copy clippings when cards have focus |
 | `⌘R` | Name the selected clipping (empty the field to remove the name) |
 | `⌘T` | Tag the selected clipping |
 | `⌘⇧T` | Open the tag manager |
 | `⌘P` | Pin / unpin |
-| `⌘⌫` | Delete the clipping |
+| `⌘⌫` | Delete text back to the start of the search line; delete clippings only when cards have focus |
 | `⌘,` | Settings — the gear in the search row does the same |
 | `Esc` | Close the panel |
 
@@ -135,7 +136,9 @@ joined by newlines in list order, and a run of files arrives as several files.
 `⇧←` and `⇧→` do the same from the keyboard, and any plain click or bare arrow
 drops the run again.
 
-Typing goes straight to the search box, which matches the clipping's content
+The panel opens with focus in the search box. Press `↓` or click a card to
+browse results, then `↑` to return to editing. While searching, text-editing
+shortcuts act on your query and cannot delete clippings. The search matches the clipping's content
 **and** the name of the app it came from — so `slack` finds everything you
 copied out of Slack without touching the sidebar.
 
