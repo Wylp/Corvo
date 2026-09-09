@@ -5,9 +5,9 @@
     "Delete older clippings": { "comment": "Toggle for automatic expiry of unprotected clippings." },
     "No count limit": { "comment": "Status when the history count rule is disabled." },
     "No automatic expiry": { "comment": "Status when the history age rule is disabled." },
-    "Keeps up to %lld clippings and removes those older than %lld days.": { "comment": "Summary when both retention rules are enabled; count then age in days." },
-    "Keeps up to %lld clippings, with no automatic expiry.": { "comment": "Summary when only the count rule is enabled." },
-    "Removes clippings older than %lld days, with no count limit.": { "comment": "Summary when only the age rule is enabled." },
+    "Keeps up to ^[%lld clipping](inflect: true) and removes those older than ^[%lld day](inflect: true).": { "comment": "Summary when both retention rules are enabled; count then age in days. The inflect markup makes both nouns agree with their values." },
+    "Keeps up to ^[%lld clipping](inflect: true), with no automatic expiry.": { "comment": "Summary when only the count rule is enabled. The inflect markup makes the noun agree with the value." },
+    "Removes clippings older than ^[%lld day](inflect: true), with no count limit.": { "comment": "Summary when only the age rule is enabled. The inflect markup makes the noun agree with the value." },
     "History stays until you delete it.": { "comment": "Summary when both retention rules are disabled." },
     "Pinned, tagged and named clippings never expire and do not count towards the limit.": { "comment": "Explains which clippings are protected from both retention rules." },
     "%@ is in use by another app. Still no shortcut.": {
@@ -159,13 +159,13 @@
       "extractionState": "manual",
       "localizations": {}
     },
-    "Corvo will delete anything older than ^[%lld day](inflect: true), however few are left. Pinned and tagged clippings are never deleted. Corvo has no undo.": {
+    "Corvo will delete anything older than ^[%lld day](inflect: true), however few are left. Pinned, tagged and named clippings are never deleted. Corvo has no undo.": {
       "comment": "Confirmation body when only the age rule is on. %lld is the number of days; the inflect markup makes the noun agree with it."
     },
-    "Corvo will keep the newest ^[%lld clipping](inflect: true) and delete anything older than ^[%lld day](inflect: true). Pinned and tagged clippings are never deleted. Corvo has no undo.": {
+    "Corvo will keep the newest ^[%lld clipping](inflect: true) and delete anything older than ^[%lld day](inflect: true). Pinned, tagged and named clippings are never deleted. Corvo has no undo.": {
       "comment": "Body of the lowered-limit confirmation. First %lld is the item limit, second is the age limit in days."
     },
-    "Corvo will keep the newest ^[%lld clipping](inflect: true), whatever their age. Pinned and tagged clippings are never deleted. Corvo has no undo.": {
+    "Corvo will keep the newest ^[%lld clipping](inflect: true), whatever their age. Pinned, tagged and named clippings are never deleted. Corvo has no undo.": {
       "comment": "Confirmation body when only the count rule is on. %lld is the ceiling; the inflect markup makes the noun agree with it."
     },
     "Could not reach GitHub. Corvo %@.": {

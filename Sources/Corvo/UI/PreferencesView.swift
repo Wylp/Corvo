@@ -401,19 +401,19 @@ struct PreferencesView: View {
             Text("""
                 Corvo will keep the newest ^[\(maxItems) clipping](inflect: true) \
                 and delete anything older than ^[\(maxAgeDays) day](inflect: true). \
-                Pinned and tagged clippings are never deleted. Corvo has no undo.
+                Pinned, tagged and named clippings are never deleted. Corvo has no undo.
                 """)
         } else if limitsItems {
             Text("""
                 Corvo will keep the newest ^[\(maxItems) clipping](inflect: true), \
-                whatever their age. Pinned and tagged clippings are never deleted. \
+                whatever their age. Pinned, tagged and named clippings are never deleted. \
                 Corvo has no undo.
                 """)
         } else {
             Text("""
                 Corvo will delete anything older than \
-                ^[\(maxAgeDays) day](inflect: true), however few are left. Pinned \
-                and tagged clippings are never deleted. Corvo has no undo.
+                ^[\(maxAgeDays) day](inflect: true), however few are left. Pinned, \
+                tagged and named clippings are never deleted. Corvo has no undo.
                 """)
         }
     }
@@ -653,13 +653,17 @@ struct PreferencesView: View {
 
     @ViewBuilder
     private var retentionSummary: some View {
-        if limitsItems && limitsAge {
-            Text("Keeps up to \(maxItems) clippings and removes those older than \(maxAgeDays) days.")
-        } else if limitsItems {
-            Text("Keeps up to \(maxItems) clippings, with no automatic expiry.")
-        } else if limitsAge {
-            Text("Removes clippings older than \(maxAgeDays) days, with no count limit.")
-        } else {
+        switch (limitsItems, limitsAge) {
+        case (true, true):
+            Text("""
+                Keeps up to ^[\(maxItems) clipping](inflect: true) and removes those \
+                older than ^[\(maxAgeDays) day](inflect: true).
+                """)
+        case (true, false):
+            Text("Keeps up to ^[\(maxItems) clipping](inflect: true), with no automatic expiry.")
+        case (false, true):
+            Text("Removes clippings older than ^[\(maxAgeDays) day](inflect: true), with no count limit.")
+        case (false, false):
             Text("History stays until you delete it.")
         }
     }
