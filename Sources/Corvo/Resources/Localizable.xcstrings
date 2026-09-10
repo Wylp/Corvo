@@ -1,6 +1,10 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "↑": { "comment": "Up-arrow keycap for returning to search." },
+    "↓": { "comment": "Down-arrow keycap for browsing clippings." },
+    "Search": { "comment": "Keyboard hint: move focus from clippings back to the search field." },
+    "Browse clippings": { "comment": "Keyboard hint: move focus from search down to the clipping cards." },
     "Limit history size": { "comment": "Toggle for the maximum number of unprotected clippings." },
     "Delete older clippings": { "comment": "Toggle for automatic expiry of unprotected clippings." },
     "No count limit": { "comment": "Status when the history count rule is disabled." },

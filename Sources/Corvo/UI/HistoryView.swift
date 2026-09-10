@@ -33,7 +33,8 @@ struct HistoryView: View {
     /// field". See `HistoryModel.highlight`.
     @State private var highlighted: Int?
     @State private var nameText = ""
-    @FocusState private var isSearchFocused: Bool
+    private enum KeyboardFocus: Hashable { case search, cards }
+    @FocusState private var keyboardFocus: KeyboardFocus?
     /// Read, never driven from here: the panel shows whether a release exists
     /// and the Settings window is where anything is done about it.
     ///
@@ -54,6 +55,8 @@ struct HistoryView: View {
                 FilterSidebar(model: model)
                 Divider()
                 carousel
+                    .focusable()
+                    .focused($keyboardFocus, equals: .cards)
             }
             Divider()
             shortcutRail
@@ -67,7 +70,8 @@ struct HistoryView: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .background(shortcuts)
-        .onAppear { isSearchFocused = true }
+        .onAppear { keyboardFocus = .search }
+        .onChange(of: model.searchFocusRequest) { _, _ in keyboardFocus = .search }
         // One sheet on the root, switched by the model. Both of these used to be
         // their own `.sheet` on their own view, one nested inside the other.
         .sheet(item: $model.sheet) { sheet in
@@ -88,7 +92,16 @@ struct HistoryView: View {
             TextField("Search content or app…", text: $model.query)
                 .textFieldStyle(.plain)
                 .font(.title3)
-                .focused($isSearchFocused)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .overlay(RoundedRectangle(cornerRadius: 6)
+                    .stroke(keyboardFocus == .search ? Color.accentColor : .clear, lineWidth: 2))
+                .focused($keyboardFocus, equals: .search)
+                .onKeyPress(.downArrow) {
+                    guard !model.items.isEmpty else { return .handled }
+                    keyboardFocus = .cards
+                    return .handled
+                }
                 .onSubmit { pasteSelected() }
             // Sibling of the magnifying glass rather than a card-coloured
             // control: this is chrome, and the cards are what the panel is for.
@@ -255,8 +268,8 @@ struct HistoryView: View {
                     LazyHStack(spacing: 12) {
                         ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                             ItemCard(item: item, tags: model.tags(for: item),
-                                     isSelected: index == model.selectedIndex,
-                                     isMarked: model.isMarked(item),
+                                     isSelected: keyboardFocus == .cards && index == model.selectedIndex,
+                                     isMarked: keyboardFocus == .cards && model.isMarked(item),
                                      number: HistoryModel.number(forIndex: index),
                                      blobs: blobs,
                                      onHover: { midX in
@@ -293,6 +306,7 @@ struct HistoryView: View {
                                 // back — measured with all three stacked, which
                                 // is the arrangement that actually ships.
                                 .onTapGesture {
+                                    keyboardFocus = .cards
                                     // Falling back to 1 rather than to 2 is the
                                     // safe direction: with no event to ask, this
                                     // selects a card, and the alternative pastes
@@ -311,10 +325,16 @@ struct HistoryView: View {
                                 // consulted.
                                 .highPriorityGesture(
                                     TapGesture().modifiers(.command)
-                                        .onEnded { model.toggleMark(at: index) })
+                                        .onEnded {
+                                            keyboardFocus = .cards
+                                            model.toggleMark(at: index)
+                                        })
                                 .highPriorityGesture(
                                     TapGesture().modifiers(.shift)
-                                        .onEnded { model.extendSelection(to: index) })
+                                        .onEnded {
+                                            keyboardFocus = .cards
+                                            model.extendSelection(to: index)
+                                        })
                         }
                     }
                     .padding(.horizontal, 20)
@@ -357,7 +377,7 @@ struct HistoryView: View {
             // twice. The key goes on working — this rail lists what you can do,
             // and an alias for something already listed is not another thing to
             // do.
-            if model.pastesOnConfirm {
+            if keyboardFocus == .cards && model.pastesOnConfirm {
                 KeycapHint(key: "⌘C", label: "Copy")
             }
             // Third of the three ways out holding a clipping, so it sits with
@@ -374,19 +394,19 @@ struct HistoryView: View {
             // that performs its action on its own; ⇧ performs nothing. "Select
             // several" next to a lone ⇧ promises a key that does something when
             // pressed, and pressing it does nothing at all.
-            KeycapHint(key: "⇧⌘", label: "Hold and click to select several")
-            KeycapHint(key: "⌘P", label: "Pin")
-            // Before ⌘T, and the pair reads in the order the words mean: name
-            // this one thing, then file it with the others.
-            KeycapHint(key: "⌘R", label: "Name")
-            KeycapHint(key: "⌘T", label: "Tag")
-            KeycapHint(key: "⌘⇧T", label: "Edit tags")
-            // Two axes now, so two hints: the column of apps runs down, the row
-            // of tags runs across, and each pair of keys points the way its own
-            // list is drawn.
-            KeycapHint(key: "⌘↑↓", label: "Apps")
-            KeycapHint(key: "⌘←→", label: "Tags")
-            KeycapHint(key: "⌘⌫", label: "Delete")
+            if keyboardFocus == .cards {
+                KeycapHint(key: "↑", label: "Search")
+                KeycapHint(key: "⇧⌘", label: "Hold and click to select several")
+                KeycapHint(key: "⌘P", label: "Pin")
+                KeycapHint(key: "⌘R", label: "Name")
+                KeycapHint(key: "⌘T", label: "Tag")
+                KeycapHint(key: "⌘⇧T", label: "Edit tags")
+                KeycapHint(key: "⌘↑↓", label: "Apps")
+                KeycapHint(key: "⌘←→", label: "Tags")
+                KeycapHint(key: "⌘⌫", label: "Delete")
+            } else {
+                KeycapHint(key: "↓", label: "Browse clippings")
+            }
             Spacer(minLength: 8)
             KeycapHint(key: "esc", label: "Close")
         }
@@ -405,8 +425,11 @@ struct HistoryView: View {
             // press of that key, so a bare arrow extended the run instead of
             // moving through it. Reading the flag at the moment of the press is
             // the version that holds.
-            shortcutButton(.leftArrow) { arrow(-1) }
-            shortcutButton(.rightArrow) { arrow(1) }
+            if keyboardFocus == .cards {
+                shortcutButton(.leftArrow) { arrow(-1) }
+                shortcutButton(.rightArrow) { arrow(1) }
+                shortcutButton(.upArrow) { keyboardFocus = .search }
+            }
             // ⌘ and not a bare ↑/↓: left and right already walk the clippings,
             // so up and down walk what is being shown. ⌘ is what keeps the pair
             // from being one more thing the search field eats.
@@ -421,27 +444,25 @@ struct HistoryView: View {
             // what made it look like the rule — it is not: ⇧ is folded into the
             // key's own characters, ⌘ makes the event a key equivalent, and only
             // an equivalent registered with ⌘ is ever asked about it.
-            shortcutButton(.leftArrow, modifiers: .command) { model.moveTagFilter(-1) }
-            shortcutButton(.rightArrow, modifiers: .command) { model.moveTagFilter(1) }
+            if keyboardFocus == .cards {
+                shortcutButton(.leftArrow, modifiers: .command) { model.moveTagFilter(-1) }
+                shortcutButton(.rightArrow, modifiers: .command) { model.moveTagFilter(1) }
+            }
             // The way to Settings that survives the menu bar icon being switched
             // off, which is what takes the `MenuBarExtra` menu — and its own ⌘,
             // — away. Registered here as well as there, both reaching the same
             // `showSettings()`, so there is no second path to keep in step.
             shortcutButton(",", modifiers: .command) { onOpenSettings() }
             shortcutButton(.return) { pasteSelected() }
-            // Wins over the search field's own ⌘C: a shortcut registered on the
-            // window's views is consulted before the menu item the field relies
-            // on. Copying a card is what the panel is open for; copying the
-            // query back out of the search box is not.
-            shortcutButton("c", modifiers: .command) {
-                copy(model.selectedItems)
-            }
-            // ⌘⌫, not a bare ⌫: the search field holds focus while the panel is
-            // open, so an unmodified Delete either steals backspace from the
-            // field — destroying a clipping with no undo — or never fires at
-            // all. ⌘⌫ is unambiguous, and it is what Finder and Paste use.
-            shortcutButton(.delete, modifiers: .command) {
-                if let item = model.selectedItem { model.delete(item) }
+            // Remove these bindings while editing, rather than swallowing the
+            // event with a guard: the text editor needs to receive it itself.
+            if keyboardFocus == .cards {
+                shortcutButton("c", modifiers: .command) {
+                    copy(model.selectedItems)
+                }
+                shortcutButton(.delete, modifiers: .command) {
+                    if let item = model.selectedItem { model.delete(item) }
+                }
             }
             shortcutButton("p", modifiers: .command) {
                 if let item = model.selectedItem { model.togglePinned(item) }

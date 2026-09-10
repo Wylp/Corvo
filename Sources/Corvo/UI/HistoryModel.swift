@@ -10,6 +10,9 @@ final class HistoryModel {
     private var observationCancellable: AnyDatabaseCancellable?
 
     var query: String = "" { didSet { reloadItems() } }
+    /// A deliberate panel opening returns keyboard ownership to search, even
+    /// when its query was already empty and the hosting view stayed alive.
+    private(set) var searchFocusRequest = 0
     var selectedSource: String? { didSet { reloadItems() } }
     var selectedTag: Int64? { didSet { reloadItems() } }
     /// The one sheet the panel can have up, or `nil` for none. Lives on the
@@ -251,6 +254,7 @@ final class HistoryModel {
     /// another method does on its way past is a reset that breaks the day that
     /// method stops doing it.
     func resetView() {
+        searchFocusRequest += 1
         pastesOnConfirm = prefs.pastesOnConfirm
         if !query.isEmpty { query = "" }
         if selectedSource != nil { selectedSource = nil }
