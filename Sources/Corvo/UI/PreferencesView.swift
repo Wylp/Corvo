@@ -401,19 +401,19 @@ struct PreferencesView: View {
             Text("""
                 Corvo will keep the newest ^[\(maxItems) clipping](inflect: true) \
                 and delete anything older than ^[\(maxAgeDays) day](inflect: true). \
-                Pinned and tagged clippings are never deleted. Corvo has no undo.
+                Pinned, tagged and named clippings are never deleted. Corvo has no undo.
                 """)
         } else if limitsItems {
             Text("""
                 Corvo will keep the newest ^[\(maxItems) clipping](inflect: true), \
-                whatever their age. Pinned and tagged clippings are never deleted. \
+                whatever their age. Pinned, tagged and named clippings are never deleted. \
                 Corvo has no undo.
                 """)
         } else {
             Text("""
                 Corvo will delete anything older than \
-                ^[\(maxAgeDays) day](inflect: true), however few are left. Pinned \
-                and tagged clippings are never deleted. Corvo has no undo.
+                ^[\(maxAgeDays) day](inflect: true), however few are left. Pinned, \
+                tagged and named clippings are never deleted. Corvo has no undo.
                 """)
         }
     }
@@ -637,19 +637,34 @@ struct PreferencesView: View {
 
     private var history: some View {
         Section {
-            rule("Keep at most", isOn: $limitsItems, value: $maxItems,
-                 field: .items, unit: "clippings")
-            rule("Delete after", isOn: $limitsAge, value: $maxAgeDays,
-                 field: .days, unit: "days")
+            rule("Limit history size", isOn: $limitsItems, value: $maxItems,
+                 field: .items, unit: "clippings", offLabel: "No count limit")
+            rule("Delete older clippings", isOn: $limitsAge, value: $maxAgeDays,
+                 field: .days, unit: "days", offLabel: "No automatic expiry")
 
-            if limitsItems || limitsAge {
-                caption("Pinned or tagged clippings never expire, and do not count towards the limit.")
-            } else {
-                // Not a warning glyph: nothing is wrong. It is a consequence, and
-                // the user chose it — they are entitled to a clipboard that keeps
-                // everything, and entitled to know that is what they now have.
-                caption("Nothing is ever deleted. The history grows until you delete clippings yourself.")
+            VStack(alignment: .leading, spacing: 8) {
+                retentionSummary
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                caption("Pinned, tagged and named clippings never expire and do not count towards the limit.")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var retentionSummary: some View {
+        switch (limitsItems, limitsAge) {
+        case (true, true):
+            Text("""
+                Keeps up to ^[\(maxItems) clipping](inflect: true) and removes those \
+                older than ^[\(maxAgeDays) day](inflect: true).
+                """)
+        case (true, false):
+            Text("Keeps up to ^[\(maxItems) clipping](inflect: true), with no automatic expiry.")
+        case (false, true):
+            Text("Removes clippings older than ^[\(maxAgeDays) day](inflect: true), with no count limit.")
+        case (false, false):
+            Text("History stays until you delete it.")
         }
     }
 
@@ -660,7 +675,7 @@ struct PreferencesView: View {
     /// it is exactly the value that comes back when they switch the rule on again.
     private func rule(_ label: LocalizedStringKey, isOn: Binding<Bool>,
                       value: Binding<Int>, field: Field,
-                      unit: LocalizedStringKey) -> some View {
+                      unit: LocalizedStringKey, offLabel: LocalizedStringKey) -> some View {
         LabeledContent {
             HStack(spacing: 6) {
                 numberField(label, value: value, field: field)
@@ -681,7 +696,12 @@ struct PreferencesView: View {
                     .onChange(of: isOn.wrappedValue) { _, _ in commitRetention() }
             }
         } label: {
-            Text(label).foregroundStyle(isOn.wrappedValue ? .primary : .secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label).foregroundStyle(isOn.wrappedValue ? .primary : .secondary)
+                if !isOn.wrappedValue {
+                    Text(offLabel).font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -693,10 +713,11 @@ struct PreferencesView: View {
         // environment. Either one alone leaves half the window in the wrong
         // language — the field showed "1.000" with only the environment set.
         TextField(label, value: value, format: .number.locale(.app))
+            .textFieldStyle(.roundedBorder)
             .labelsHidden()
             .multilineTextAlignment(.trailing)
             .monospacedDigit()
-            .frame(width: 64)
+            .frame(width: 80)
             .focused($focus, equals: field)
             .onSubmit { commitRetention() }
     }
